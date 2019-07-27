@@ -1,17 +1,20 @@
 package com.ctrip.xpipe.redis.keeper.store;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.util.concurrent.atomic.AtomicLong;
-
-import org.junit.Assert;
-import org.junit.Test;
-
+import com.ctrip.xpipe.netty.filechannel.ReferenceFileRegion;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+import com.ctrip.xpipe.redis.core.protocal.protocal.LenEofType;
 import com.ctrip.xpipe.redis.core.store.RdbFileListener;
 import com.ctrip.xpipe.redis.keeper.AbstractRedisKeeperTest;
-
 import io.netty.buffer.Unpooled;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author wenchao.meng
@@ -21,16 +24,35 @@ import io.netty.buffer.Unpooled;
 public class DefaultRdbStoreTest extends AbstractRedisKeeperTest{
 	
 	private long rdbFileSize = 1024L;
+	
 	private AtomicLong readLen = new AtomicLong();
+	
+	private File rdbFile;
+	private DefaultRdbStore rdbStore;
+	private AtomicReference<Exception> exception = new AtomicReference<Exception>(null);
+	
+	@Before
+	public void beforeDefaultRdbStoreTest() throws IOException{
+		
+		String fileName = String.format("%s/%s.rdb", getTestFileDir(), getTestName());
+		rdbFile = new File(fileName);
+		rdbStore = new DefaultRdbStore(rdbFile, 1L, new LenEofType(rdbFileSize));
+	}
+	
+	@Test
+	public void testFail() throws IOException, TimeoutException {
+		
+		readRdbInNewThread(rdbStore);
+		byte[] message = randomString().getBytes();  
+		rdbStore.writeRdb(Unpooled.wrappedBuffer(message));
+		rdbStore.failRdb(new Exception("just fail it"));
+		
+		waitConditionUntilTimeOut(() -> exception.get() != null);
+	}
 
 	@Test
 	public void testNoDataBeginRead() throws IOException{
 		
-		String fileName = String.format("%s/%s.rdb", getTestFileDir(), getTestName());
-		
-		File file = new File(fileName);
-		
-		DefaultRdbStore rdbStore = new DefaultRdbStore(file, 1L, rdbFileSize);
 
 		readRdbInNewThread(rdbStore);
 		
@@ -39,8 +61,9 @@ public class DefaultRdbStoreTest extends AbstractRedisKeeperTest{
 		
 		byte[] message = randomString().getBytes();  
 		rdbStore.writeRdb(Unpooled.wrappedBuffer(message));
-		sleep(100);
-		Assert.assertEquals(message.length, readLen.get());		
+		rdbStore.endRdb();
+		sleep(200);
+		Assert.assertEquals(message.length, readLen.get());
 	}
 
 	private void readRdbInNewThread(final DefaultRdbStore rdbStore) {
@@ -52,17 +75,20 @@ public class DefaultRdbStoreTest extends AbstractRedisKeeperTest{
 				
 				try {
 					rdbStore.readRdbFile(new RdbFileListener() {
-						
 						@Override
-						public void setRdbFileInfo(long rdbFileSize, long rdbFileKeeperOffset) {
-							logger.info("[setRdbFileInfo]{}, {}", rdbFileSize, rdbFileKeeperOffset);
+						public void setRdbFileInfo(EofType eofType, long rdbFileKeeperOffset) {
+							logger.info("[setRdbFileInfo]{}, {}", eofType, rdbFileKeeperOffset);
 						}
 						
 						@Override
-						public void onFileData(FileChannel fileChannel, long pos, long len) throws IOException {
-							logger.info("[onFileData]{}, {}", pos, len);
-							if(len > 0){
-								readLen.addAndGet(len);
+						public void onFileData(ReferenceFileRegion referenceFileRegion) throws IOException {
+							
+							if(referenceFileRegion != null){
+								logger.info("[onFileData]{}", referenceFileRegion);
+								if(referenceFileRegion.count() > 0){
+									readLen.addAndGet(referenceFileRegion.count());
+									referenceFileRegion.release();
+								}
 							}
 						}
 						
@@ -74,6 +100,7 @@ public class DefaultRdbStoreTest extends AbstractRedisKeeperTest{
 						@Override
 						public void exception(Exception e) {
 							logger.info("[exception]", e);
+							exception.set(e);
 						}
 						
 						@Override
@@ -83,6 +110,7 @@ public class DefaultRdbStoreTest extends AbstractRedisKeeperTest{
 					});
 				} catch (IOException e) {
 					logger.error("[run][read rdb error]" + rdbStore, e);
+					exception.set(e);
 				}
 			}
 		}).start();

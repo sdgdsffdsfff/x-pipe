@@ -1,15 +1,13 @@
 package com.ctrip.xpipe.payload;
 
+import com.ctrip.xpipe.api.payload.InOutPayload;
+import io.netty.buffer.ByteBuf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.channels.WritableByteChannel;
 import java.util.concurrent.atomic.AtomicLong;
-
-import org.slf4j.LoggerFactory;
-import org.slf4j.Logger;
-
-import com.ctrip.xpipe.api.payload.InOutPayload;
-
-import io.netty.buffer.ByteBuf;
 
 /**
  * @author wenchao.meng
@@ -50,11 +48,19 @@ public abstract class AbstractInOutPayload implements InOutPayload{
 	protected abstract int doIn(ByteBuf byteBuf) throws IOException;
 	
 	@Override
-	public void endInput() {
+	public void endInput() throws IOException {
 		doEndInput();
 	}
 
-	protected void doEndInput(){}
+	protected void doEndInput() throws IOException{}
+	
+	@Override
+	public void endInputTruncate(int reduceLen) throws IOException {
+		doTruncate(reduceLen);
+		endInput();
+	}
+	
+	protected abstract void doTruncate(int reduceLen) throws IOException;
 
 	@Override
 	public void startOutput() throws IOException {
@@ -63,7 +69,6 @@ public abstract class AbstractInOutPayload implements InOutPayload{
 	}
 
 	protected void doStartOutput() throws IOException{}
-	
 
 	@Override
 	public long outSize() {

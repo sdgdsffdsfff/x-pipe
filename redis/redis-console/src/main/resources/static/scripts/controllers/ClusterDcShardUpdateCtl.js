@@ -4,12 +4,12 @@ index_module.controller('ClusterDcShardUpdateCtl',
                          function ($rootScope, $scope, $stateParams, $window, $location, toastr, AppUtil,
                                    ClusterService, ShardService, RedisService, KeeperContainerService) {
 
-                             $scope.dcs, $scope.dcActiveTab,
-                                 $scope.hasMasterRedis = false, 
-                                 $scope.createKeeperErrorMsg = '';
+                             $scope.dcs,$scope.hasMasterRedis = false, $scope.createKeeperErrorMsg = '';
                              $scope.dcShards = {};
                              $scope.clusterName = $stateParams.clusterName;
                              $scope.shardName = $stateParams.shardName;
+                             $scope.currentDcName = $stateParams.currentDcName;
+                             $scope.masterDcName;
 
                              $scope.switchDc = switchDc;
                              $scope.loadCluster = loadCluster;
@@ -32,18 +32,19 @@ index_module.controller('ClusterDcShardUpdateCtl',
                                  loadCluster();
                              }
 
-                             function findKeeperContainers(dcName) {
-                                 KeeperContainerService.findKeeperContainersByDc(dcName)
-                                     .then(function (result) {
-                                         $scope.keeperContainers = result;
-                                     })
-
+                             function findActiveKeeperContainersByCluster(dcName, clusterName) {
+                                 KeeperContainerService.findAvailableKeepersByDcAndCluster(dcName, clusterName)
+                                    .then(function(result) {
+                                         result.sort(function(keeperA, keeperB) {
+                                             return keeperA.count - keeperB.count;
+                                         });
+                                            $scope.keeperContainers = result;
+                                        })
                              }
 
                              function switchDc(dc) {
                                  $scope.currentDcName = dc.dcName;
-                                 findKeeperContainers($scope.currentDcName);
-
+                                 findActiveKeeperContainersByCluster($scope.currentDcName, $scope.clusterName);
                                  var shard = $scope.dcShards[$scope.currentDcName];
 
                                  if (!shard){
@@ -60,14 +61,27 @@ index_module.controller('ClusterDcShardUpdateCtl',
                                              return;
                                          }
                                          $scope.dcs = result;
-                                         $scope.currentDcName = $scope.dcs[0].dcName;
-                                         findKeeperContainers($scope.currentDcName);
-                                         loadShard($scope.clusterName, $scope.dcs[0].dcName, $scope.shardName);
+                                         
+                                         ClusterService.load_cluster($scope.clusterName)
+                                 	 		.then(function(result) {
+                                 	 			$scope.cluster = result;
+                                 	 			for(var i = 0 ; i != $scope.dcs.length; ++i) {
+                                 	 				if($scope.dcs[i].id === $scope.cluster.activedcId) {
+                                 	 					$scope.masterDcName = $scope.dcs[i].dcName;
+                                 	 					break;
+                                 	 				}
+                                                } 
+                                 	 		}, function(result) {
+                                 	 			toastr.error(AppUtil.errorMsg(result));
+                                 	 		});
+                                         
+                                         if(!$scope.currentDcName) $scope.currentDcName = $scope.dcs[0].dcName;
+                                         findActiveKeeperContainersByCluster($scope.currentDcName, $scope.clusterName);
+                                         loadShard($scope.clusterName, $scope.currentDcName, $scope.shardName);
 
                                      }, function (result) {
                                          toastr.error(AppUtil.errorMsg(result));
                                      });
-
                              }
 
                              function loadShard(clusterName, dcName, shardName) {
@@ -83,14 +97,15 @@ index_module.controller('ClusterDcShardUpdateCtl',
                              }
 
                              function preCreateRedis() {
-                                 $scope.toCreateRedis = {};
-
+                                 $scope.toCreateRedis = {
+                                		 redisPort : 6379,
+                                		 master : false
+                                 };
+                                 
                                  $('#createRedisModal').modal('show');
                              }
 
                              function createRedis() {
-                                 $scope.toCreateRedis.id = 0;
-                                 if($scope.hasRedisMaster == true) $scope.toCreateRedis.redisMaster = -1;
                                  var shard = $scope.dcShards[$scope.currentDcName];
                                  shard.redises.push($scope.toCreateRedis);
                                  $scope.toCreateRedis = {};
@@ -108,11 +123,30 @@ index_module.controller('ClusterDcShardUpdateCtl',
                              }
 
                              function preCreateKeeper() {
-                                 $scope.toCreateFirstKeeper = {};
-
+                                 $scope.orgSpecifiedKeepers = [];
+                                 $scope.toCreateFirstKeeper = {
+                                 };
                                  // init backup container
                                  $scope.toCreateOtherKeepers = [];
-                                 $scope.toCreateOtherKeepers.push({});
+
+                                 var shard = $scope.dcShards[$scope.currentDcName];
+                                  KeeperContainerService.findAvailableKeepersByDc($scope.currentDcName, shard).then(function(keepers){
+                                     var keeper = keepers.shift();
+                                     if(keeper){
+                                         $scope.toCreateFirstKeeper = {
+                                            keepercontainerId : keeper.keepercontainerId.toString(),
+                                            redisPort : keeper.redisPort
+                                         };
+                                     }
+
+                                     while(keeper = keepers.shift()){
+                                        $scope.toCreateOtherKeepers.push({
+                                            keepercontainerId : keeper.keepercontainerId.toString(),
+                                            redisPort : keeper.redisPort
+
+                                         });
+                                     }
+                                  });
 
                                  $('#createKeeperModal').modal('show');
                              }
@@ -132,7 +166,6 @@ index_module.controller('ClusterDcShardUpdateCtl',
                                     			 break;
                                     		 }
                                     	 }
-                                    	 $scope.toCreateFirstKeeper.id = 0;
                                          shard.keepers.push($scope.toCreateFirstKeeper);
                                      }
 
@@ -148,7 +181,6 @@ index_module.controller('ClusterDcShardUpdateCtl',
                                     			 break;
                                     		 }
                                     	 }
-                                    	 otherKeeper.id = 0;
                                          shard.keepers.push(otherKeeper);
                                      }
                                  });
@@ -205,34 +237,31 @@ index_module.controller('ClusterDcShardUpdateCtl',
 
                                  var shard = $scope.dcShards[$scope.currentDcName];
 
-                                 RedisService.updateShardRedis($scope.clusterName, $scope.currentDcName, shard.id, shard)
+                                 RedisService.updateShardRedis($scope.clusterName, $scope.currentDcName, shard.shardTbl.shardName, shard)
                                      .then(function (result) {
                                          toastr.success("operation success");
                                          $window.location.href =
-                                             "/#/cluster_dc_shards?clusterName=" + $scope.clusterName;
+                                             "#/cluster_dc_shards/" + $scope.clusterName + "/" + $scope.currentDcName;
                                      }, function (result) {
                                          toastr.error(AppUtil.errorMsg(result), "operation fail");
                                      });
-
                              }
 
                              function refreshShardStatus() {
-                                 $scope.hasRedisMaster = false;
-
+                                 if(! $scope.currentDcName === $scope.masterDcName) {
+                                	 $scope.hasRedisMaster = false;
+                                	 return;
+                                 }
+                                 
                                  var shard = $scope.dcShards[$scope.currentDcName];
-
+                                 $scope.hasRedisMaster = false;
                                  if (shard.redises && shard.redises.length) {
                                      shard.redises.forEach(function (redis) {
-                                         if (redis.redisMaster == 0) {
+                                         if (redis.master === true) {
                                              $scope.hasRedisMaster = true;
                                          }
                                      })
                                  }
-                                 
-                                 if(shard.upstream === "0.0.0.0:0000") {
-                                	 $scope.hasRedisMaster = true;
-                                 }
-
                              }
 
                          }]);

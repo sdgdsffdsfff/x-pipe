@@ -1,34 +1,25 @@
 package com.ctrip.xpipe.redis.core.meta.impl;
 
-
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Serializable;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-
-import org.unidal.tuple.Pair;
-import org.xml.sax.SAXException;
-
-import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
-import com.ctrip.xpipe.redis.core.entity.DcMeta;
-import com.ctrip.xpipe.redis.core.entity.KeeperContainerMeta;
-import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
-import com.ctrip.xpipe.redis.core.entity.MetaServerMeta;
-import com.ctrip.xpipe.redis.core.entity.RedisMeta;
-import com.ctrip.xpipe.redis.core.entity.ShardMeta;
-import com.ctrip.xpipe.redis.core.entity.XpipeMeta;
-import com.ctrip.xpipe.redis.core.entity.ZkServerMeta;
+import com.ctrip.xpipe.endpoint.HostPort;
+import com.ctrip.xpipe.redis.core.entity.*;
 import com.ctrip.xpipe.redis.core.exception.RedisRuntimeException;
 import com.ctrip.xpipe.redis.core.meta.MetaClone;
 import com.ctrip.xpipe.redis.core.meta.MetaException;
 import com.ctrip.xpipe.redis.core.meta.MetaUtils;
 import com.ctrip.xpipe.redis.core.meta.XpipeMetaManager;
 import com.ctrip.xpipe.redis.core.transform.DefaultSaxParser;
+import com.ctrip.xpipe.redis.core.util.OrgUtil;
+import com.ctrip.xpipe.tuple.Pair;
 import com.ctrip.xpipe.utils.FileUtils;
+import com.ctrip.xpipe.utils.ObjectUtils;
+import com.ctrip.xpipe.utils.StringUtil;
+import com.google.common.base.Joiner;
+import org.xml.sax.SAXException;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Serializable;
+import java.util.*;
 
 /**
  * @author wenchao.meng
@@ -38,14 +29,17 @@ import com.ctrip.xpipe.utils.FileUtils;
 public class DefaultXpipeMetaManager extends AbstractMetaManager implements XpipeMetaManager{
 	
 	private String fileName = null;
-	protected XpipeMeta xpipeMeta;
+
+	protected final XpipeMeta xpipeMeta;
+	private Map<HostPort, MetaDesc> inverseMap;
 	
-	protected DefaultXpipeMetaManager(){
-		
-	}
-	
-	private DefaultXpipeMetaManager(XpipeMeta xpipeMeta){
+	public DefaultXpipeMetaManager(XpipeMeta xpipeMeta){
 		this.xpipeMeta = xpipeMeta;
+	}
+
+	private DefaultXpipeMetaManager(String fileName) {
+		this.fileName = fileName;
+		xpipeMeta = load(fileName);
 	}
 
 	public static XpipeMetaManager buildFromFile(String fileName){
@@ -56,16 +50,11 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 		return new DefaultXpipeMetaManager(xpipeMeta);
 	}
 
-	private DefaultXpipeMetaManager(String fileName) {
-		this.fileName = fileName;
-		load(fileName);
-	}
-	
-	public void load(String fileName) {
+	public XpipeMeta load(String fileName) {
 		
 		try {
 			InputStream ins = FileUtils.getFileInputStream(fileName);
-			xpipeMeta = DefaultSaxParser.parse(ins);
+			return DefaultSaxParser.parse(ins);
 		} catch (SAXException | IOException e) {
 			logger.error("[load]" + fileName, e);
 			throw new IllegalStateException("load " + fileName + " failed!", e);
@@ -73,41 +62,72 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	}
 	
 	@Override
-	public String getActiveDc(String clusterId){
+	public String getActiveDc(String clusterId, String shardId){
 		
 		for(DcMeta dcMeta : xpipeMeta.getDcs().values()){
 			ClusterMeta clusterMeta = dcMeta.getClusters().get(clusterId);
 			if(clusterMeta == null){
 				continue;
 			}
-			return clusterMeta.getActiveDc();
+			String activeDc = clusterMeta.getActiveDc();
+			if(activeDc == null){
+				logger.info("[getActiveDc][activeDc null]{}", clusterMeta);
+				throw new MetaException(String.format("cluster exist but active dc == null {}", clusterMeta));
+			}
+			return activeDc.trim().toLowerCase();
 		}
 		throw new MetaException("clusterId " + clusterId + " not found!");
 	}
 	
 	@Override
-	public List<String> getBackupDc(String clusterId) {
+	public Set<String> getBackupDcs(String clusterId, String shardId) {
 
-		String activeDc = getActiveDc(clusterId);
-		List<String> result = new LinkedList<>();
+		boolean found = false;
 		
 		for(DcMeta dcMeta : xpipeMeta.getDcs().values()){
 			ClusterMeta clusterMeta = dcMeta.getClusters().get(clusterId);
 			if(clusterMeta == null){
 				continue;
 			}
-			if(!dcMeta.getId().equals(activeDc)){
-				result.add(dcMeta.getId());
+			
+			found = true;
+			
+			if(StringUtil.isEmpty(clusterMeta.getBackupDcs())){
+				logger.info("[getBackupDcs][backup dcs empty]{}, {}", dcMeta.getId(), clusterMeta);
+				continue;
 			}
+			
+			
+			Set<String> backDcs = backupDcs(clusterMeta.getBackupDcs());
+			backDcs.remove(clusterMeta.getActiveDc().toLowerCase().trim());
+			return backDcs;
 		}
 		
-		return result;
+		if(found){
+			return new HashSet<>();
+		}
+		throw new MetaException("clusterId " + clusterId + " not found!");
 	}
 
+	
+	private Set<String> backupDcs(String backupDcsDesc) {
+		
+		Set<String> backDcs = new HashSet<>();
+		if(StringUtil.isEmpty(backupDcsDesc)){
+			return backDcs;
+		}
+		for(String dc : backupDcsDesc.split("\\s*,\\s*")){
+			dc = dc.trim();
+			if(!StringUtil.isEmpty(dc)){
+				backDcs.add(dc.toLowerCase());
+			}
+		}
+		return backDcs;
+	}
 
 	@Override
 	public Set<String> getDcClusters(String dc) {
-		return new HashSet<>(xpipeMeta.getDcs().get(dc).getClusters().keySet());
+		return new HashSet<>(getDirectDcMeta(dc).getClusters().keySet());
 	}
 
 	@Override
@@ -126,7 +146,14 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	}
 	
 	protected DcMeta getDirectDcMeta(String dc) {
-		return xpipeMeta.getDcs().get(dc);
+
+		for(Map.Entry<String, DcMeta> dentry : xpipeMeta.getDcs().entrySet()){
+			String dcId = dentry.getKey();
+			if(dcId.equalsIgnoreCase(dc)){
+				return dentry.getValue();
+			}
+		}
+		return null;
 	}
 
 	@Override
@@ -210,22 +237,47 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	}
 
 	@Override
+	public MetaDesc findMetaDesc(HostPort hostPort) {
+
+		if(inverseMap != null){
+			return inverseMap.get(hostPort);
+		}
+
+		synchronized (this){
+			if(inverseMap == null){
+				inverseMap = InverseHostPortMapBuilder.build(xpipeMeta);
+			}
+		}
+
+		return inverseMap.get(hostPort);
+	}
+
+	private ShardMeta cloneWithParent(DcMeta dcMeta, ClusterMeta clusterMeta, ShardMeta shardMeta) {
+
+		ShardMeta result = clone(shardMeta);
+		result.setParent(clone(clusterMeta));
+		result.parent().setParent(clone(dcMeta));
+		return result;
+	}
+
+	@Override
 	public Pair<String, RedisMeta> getRedisMaster(String clusterId, String shardId) {
 		
 		for(DcMeta dcMeta : xpipeMeta.getDcs().values()){
-			for(ClusterMeta clusterMeta : dcMeta.getClusters().values()){
-				if(!clusterId.equals(clusterMeta.getId())){
-					continue;
-				}
-				for(ShardMeta shardMeta : clusterMeta.getShards().values()){
-					if(!shardId.equals(shardMeta.getId())){
-						continue;
-					}
-					for(RedisMeta redisMeta : shardMeta.getRedises()){
-						if(redisMeta.isMaster()){
-							return new Pair<String, RedisMeta>(dcMeta.getId(), clone(redisMeta));
-						}
-					}
+
+			ClusterMeta clusterMeta = dcMeta.findCluster(clusterId);
+			if( clusterMeta == null ){
+				continue;
+			}
+
+			ShardMeta shardMeta = clusterMeta.findShard(shardId);
+			if(shardMeta == null){
+				continue;
+			}
+
+			for(RedisMeta redisMeta : shardMeta.getRedises()){
+				if(redisMeta.isMaster()){
+					return new Pair<>(dcMeta.getId(), clone(redisMeta));
 				}
 			}
 		}
@@ -255,7 +307,7 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	@Override
 	public void setSurviveKeepers(String dcId, String clusterId, String shardId, List<KeeperMeta> surviveKeepers) {
 		
-		List<KeeperMeta> keepers = getDirectKeepers(dcId, clusterId, shardId);;
+		List<KeeperMeta> keepers = getDirectKeepers(dcId, clusterId, shardId);
 		
 		List<KeeperMeta> unfoundKeepers = new LinkedList<>();
 		
@@ -358,7 +410,7 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	@Override
 	public boolean updateRedisMaster(String dc, String clusterId, String shardId, RedisMeta redisMaster) throws MetaException {
 		
-		String activeDc = getActiveDc(clusterId);
+		String activeDc = getActiveDc(clusterId, shardId);
 		if(!activeDc.equals(dc)){
 			throw new MetaException("active dc:" + activeDc + ", but given:" + dc + ", clusterID:" + clusterId);
 		}
@@ -438,17 +490,7 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 
 	@Override
 	public boolean dcExists(String dc) {
-		return xpipeMeta.getDcs().get(dc) != null;
-	}
-
-	@Override
-	public String getUpstream(String dc, String clusterId, String shardId) throws MetaException {
-		
-		ShardMeta shardMeta = getShardMeta(dc, clusterId, shardId);
-		if(shardMeta == null){
-			throw new MetaException("can not find shard:" + dc + "," + clusterId + "," + shardId);
-		}
-		return shardMeta.getUpstream();
+		return getDirectDcMeta(dc)!= null;
 	}
 
 	@Override
@@ -487,11 +529,12 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	@Override
 	public DcMeta getDcMeta(String dcId) {
 		
-		return clone(xpipeMeta.getDcs().get(dcId));
+		return clone(getDirectDcMeta(dcId));
 	}
 
 	@Override
 	public List<KeeperMeta> getAllSurviceKeepers(String dcId, String clusterId, String shardId) {
+
 		List<KeeperMeta> keepers = getDirectKeepers(dcId, clusterId, shardId);
 		List<KeeperMeta> result = new LinkedList<>();
 		
@@ -522,20 +565,150 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	}
 
 	@Override
-	public void updateUpstream(String dc, String clusterId, String shardId, String ip, int port) {
-		ClusterMeta clusterMeta = getDirectClusterMeta(dc, clusterId);
-		if(clusterMeta == null){
-			throw new IllegalArgumentException("unfound clusterId:" + clusterId);
+	public SentinelMeta getSentinel(String dc, String clusterId, String shardId) {
+		
+		DcMeta dcMeta = getDirectDcMeta(dc);
+		if((dcMeta == null)){
+			throw new RedisRuntimeException("dcmeta not found:" + dc); 
 		}
-		String activedc = clusterMeta.getActiveDc();
-		if(dc.equalsIgnoreCase(activedc)){
-			throw new IllegalArgumentException("dc active, can not update upstream:" + dc + "," + clusterId);
-		}
-		ShardMeta shardMeta = clusterMeta.getShards().get(shardId);
+		ShardMeta shardMeta = getDirectShardMeta(dc, clusterId, shardId);
 		if(shardMeta == null){
-			throw new IllegalArgumentException("unfound shard:" + clusterId + "," + shardId);
+			throw new RedisRuntimeException(String.format("shardMeta not found:%s %s %s", dc, clusterId, shardId));
 		}
-		logger.info("[updateUpstreamKeeper]{},{},{},{}, {}", dc, clusterId, shardId, ip, port);
-		shardMeta.setUpstream(String.format("%s:%d", ip,port));
+		Long sentinelId = shardMeta.getSentinelId();
+		SentinelMeta sentinelMeta = dcMeta.getSentinels().get(sentinelId);
+		if(sentinelMeta == null){
+			return new SentinelMeta().setAddress("");
+		}
+		return MetaClone.clone(sentinelMeta);
+	}
+
+	@Override
+	public void primaryDcChanged(String dc, String clusterId, String shardId, String newPrimaryDc) {
+		
+		for(DcMeta dcMeta : xpipeMeta.getDcs().values()){
+			changePrimaryDc(dcMeta, clusterId, shardId, newPrimaryDc);
+		}
+	}
+
+	@Override
+	public List<RouteMeta> routes(String currentDc, String tag) {
+
+		DcMeta dcMeta = getDirectDcMeta(currentDc);
+		List<RouteMeta> routes = dcMeta.getRoutes();
+		List<RouteMeta> result = new LinkedList<>();
+
+		if(routes != null){
+			routes.forEach(routeMeta -> {
+				if(routeMeta.tagEquals(tag) && currentDc.equalsIgnoreCase(routeMeta.getSrcDc())) {
+					result.add(MetaClone.clone(routeMeta));
+				}
+			});
+		}
+
+		return result;
+	}
+
+	@Override
+	public RouteMeta randomRoute(String currentDc, String tag, Integer orgId, String dstDc) {
+
+		List<RouteMeta> routes = routes(currentDc, tag);
+		if(routes == null || routes.isEmpty()){
+			return null;
+		}
+
+		//for Same dstdc
+		List<RouteMeta> dstDcRoutes = new LinkedList<>();
+		routes.forEach(routeMeta -> {
+			if(routeMeta.getDstDc().equalsIgnoreCase(dstDc)){
+				dstDcRoutes.add(routeMeta);
+			}
+		});
+		if(dstDcRoutes.isEmpty()){
+			return null;
+		}
+
+		//for same org id
+		List<RouteMeta> resultsCandidates = new LinkedList<>();
+		dstDcRoutes.forEach(routeMeta -> {
+			if(ObjectUtils.equals(routeMeta.getOrgId(), orgId)){
+				resultsCandidates.add(routeMeta);
+			}
+		});
+
+		if(!resultsCandidates.isEmpty()){
+			return random(resultsCandidates);
+		}
+
+
+		dstDcRoutes.forEach(routeMeta -> {
+			if(OrgUtil.isDefaultOrg(routeMeta.getOrgId())){
+				resultsCandidates.add(routeMeta);
+			}
+		});
+
+		return random(resultsCandidates);
+	}
+
+	@Override
+	public List<ClusterMeta> getSpecificActiveDcClusters(String currentDc, String clusterActiveDc) {
+
+		DcMeta directDcMeta = getDirectDcMeta(currentDc);
+		if(directDcMeta == null){
+			throw new IllegalArgumentException(String.format("can not find currentDc %s, %s", currentDc, clusterActiveDc));
+		}
+
+		List<ClusterMeta> result = new LinkedList<>();
+		directDcMeta.getClusters().forEach((clusterId, clusterMeta) -> {
+			if(clusterActiveDc.equalsIgnoreCase(clusterMeta.getActiveDc())){
+				result.add(clone(clusterMeta));
+			}
+		});
+
+		return result;
+	}
+
+	protected <T> T random(List<T> resultsCandidates) {
+
+		if(resultsCandidates.isEmpty()){
+			return null;
+		}
+
+		int random = new Random().nextInt(resultsCandidates.size());
+		return resultsCandidates.get(random);
+
+	}
+
+	private void changePrimaryDc(DcMeta dcMeta, String clusterId, String shardId, String newPrimaryDc) {
+		
+		ClusterMeta clusterMeta = dcMeta.getClusters().get(clusterId);
+		if(clusterMeta == null){
+			throw new RedisRuntimeException(String.format("clusterMeta not found:%s %s %s", dcMeta.getId(), clusterId, shardId));
+		}
+		
+		String currentPrimaryDc = clusterMeta.getActiveDc();
+		
+		if(StringUtil.trimEquals(newPrimaryDc, currentPrimaryDc, true)){
+			logger.info("[changePrimaryDc][equal]{}, {}, {}", clusterId, shardId, newPrimaryDc);
+			return;
+		}
+		
+		newPrimaryDc = newPrimaryDc.trim().toLowerCase();
+		
+		Set<String> allDcs = new HashSet<>();
+		if(currentPrimaryDc != null){
+			allDcs.add(currentPrimaryDc.trim().toLowerCase());
+		}
+		allDcs.addAll(backupDcs(clusterMeta.getBackupDcs()));
+		
+		clusterMeta.setActiveDc(newPrimaryDc);
+		
+		allDcs.remove(newPrimaryDc);
+		clusterMeta.setBackupDcs(Joiner.on(",").join(allDcs));
+	}
+	
+	@Override
+	public String toString() {
+		return xpipeMeta.toString();
 	}
 }

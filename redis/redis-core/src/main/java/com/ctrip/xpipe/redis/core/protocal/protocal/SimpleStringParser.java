@@ -1,7 +1,6 @@
 package com.ctrip.xpipe.redis.core.protocal.protocal;
 
 import com.ctrip.xpipe.redis.core.protocal.RedisClientProtocol;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
@@ -52,6 +51,11 @@ public class SimpleStringParser extends AbstractRedisClientProtocol<String>{
 	protected ByteBuf getWriteByteBuf() {
 		
 		return Unpooled.wrappedBuffer(getRequestBytes(PLUS_BYTE, payload));
+	}
+
+	@Override
+	public boolean supportes(Class<?> clazz) {
+		return String.class.isAssignableFrom(clazz);
 	}
 
 }

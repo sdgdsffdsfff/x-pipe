@@ -1,16 +1,9 @@
 package com.ctrip.xpipe.redis.core.meta;
 
+import com.ctrip.xpipe.redis.core.entity.*;
+
 import java.util.List;
 import java.util.Set;
-
-import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
-import com.ctrip.xpipe.redis.core.entity.DcMeta;
-import com.ctrip.xpipe.redis.core.entity.KeeperContainerMeta;
-import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
-import com.ctrip.xpipe.redis.core.entity.MetaServerMeta;
-import com.ctrip.xpipe.redis.core.entity.RedisMeta;
-import com.ctrip.xpipe.redis.core.entity.ShardMeta;
-import com.ctrip.xpipe.redis.core.entity.ZkServerMeta;
 
 /**
  * @author wenchao.meng
@@ -18,16 +11,35 @@ import com.ctrip.xpipe.redis.core.entity.ZkServerMeta;
  * Jul 7, 2016
  */
 public interface DcMetaManager{
-	
+
+	/**
+	 * if no route found return null
+	 * @param clusterId
+	 * @return
+	 */
+	RouteMeta randomRoute(String clusterId);
+
+	/**
+	 * find all clusters in currentDc whose active dc is clusterActiveDc
+	 * @param clusterActiveDc
+	 * @return
+	 */
+	List<ClusterMeta> getSpecificActiveDcClusters(String clusterActiveDc);
+
+
 	Set<String> getClusters();
-	
+
 	boolean hasCluster(String clusterId);
 	
 	boolean hasShard(String clusterId, String shardId);
 	
 	ClusterMeta getClusterMeta(String clusterId);
 	
-	String getActiveDc(String clusterId);
+	String getActiveDc(String clusterId, String shardId);
+	
+	SentinelMeta getSentinel(String clusterId, String shardId);
+	
+	String getSentinelMonitorName(String clusterId, String shardId);
 
 	ShardMeta getShardMeta(String clusterId, String shardId);
 
@@ -52,8 +64,6 @@ public interface DcMetaManager{
 
 	KeeperContainerMeta getKeeperContainer(KeeperMeta keeperMeta);
 
-	String getUpstream(String clusterId, String shardId) throws MetaException;
-	
 	DcMeta getDcMeta();
 	
 	List<KeeperMeta> getAllSurviveKeepers(String clusterId, String shardId);
@@ -70,7 +80,8 @@ public interface DcMetaManager{
 
 	void setSurviveKeepers(String clusterId, String shardId, List<KeeperMeta> surviceKeepers);
 
-	void updateUpstream(String clusterId, String shardId, String ip, int port);
+	Set<String> getBackupDcs(String clusterId, String shardId);
 
-	
+	void primaryDcChanged(String clusterId, String shardId, String newPrimaryDc);
+
 }

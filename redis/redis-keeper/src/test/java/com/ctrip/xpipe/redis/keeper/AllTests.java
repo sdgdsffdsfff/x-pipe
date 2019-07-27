@@ -1,20 +1,16 @@
 package com.ctrip.xpipe.redis.keeper;
 
-
-
-
+import com.ctrip.xpipe.redis.keeper.config.DefaultKeeperConfigTest;
+import com.ctrip.xpipe.redis.keeper.container.KeeperContainerServiceTest;
+import com.ctrip.xpipe.redis.keeper.handler.*;
+import com.ctrip.xpipe.redis.keeper.impl.*;
+import com.ctrip.xpipe.redis.keeper.impl.fakeredis.*;
+import com.ctrip.xpipe.redis.keeper.monitor.impl.DefaultKeeperStatsTest;
+import com.ctrip.xpipe.redis.keeper.protocal.cmd.PsyncTest;
+import com.ctrip.xpipe.redis.keeper.store.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
-
-import com.ctrip.xpipe.redis.keeper.impl.DefaultRedisKeeperServerTest;
-import com.ctrip.xpipe.redis.keeper.impl.RedisKeeperServerStateActiveTest;
-import com.ctrip.xpipe.redis.keeper.impl.RedisKeeperServerStateBackupTest;
-import com.ctrip.xpipe.redis.keeper.impl.RedisKeeperServerStateUnknownTest;
-import com.ctrip.xpipe.redis.keeper.protocal.cmd.PsyncTest;
-import com.ctrip.xpipe.redis.keeper.store.DefaultRdbStoreTest;
-import com.ctrip.xpipe.redis.keeper.store.DefaultReplicationStoreManagerTest;
-import com.ctrip.xpipe.redis.keeper.container.KeeperContainerServiceTest;
 
 /**
  * @author wenchao.meng
@@ -23,14 +19,33 @@ import com.ctrip.xpipe.redis.keeper.container.KeeperContainerServiceTest;
  */
 @RunWith(Suite.class)
 @SuiteClasses({
+	DefaultRedisKeeperServerConnectToFakeRedisTest.class,
+	FakeRedisHalfRdbServerFail.class,
 	PsyncTest.class,
+	DefaultRedisClientTest.class,
+	CommandHandlerManagerTest.class,
 	RedisKeeperServerStateBackupTest.class,
 	RedisKeeperServerStateActiveTest.class,
 	RedisKeeperServerStateUnknownTest.class,
+	DefaultRedisMasterReplicationTest.class,
 	KeeperContainerServiceTest.class,
 	DefaultReplicationStoreManagerTest.class,
 	DefaultRedisKeeperServerTest.class,
-	DefaultRdbStoreTest.class
+	DefaultReplicationStoreTest.class,
+	DefaultRdbStoreTest.class,
+	DefaultRdbStoreEofMarkTest.class,
+	DefaultCommandStoreTest.class,
+	DefaultRedisSlaveTest.class,
+	RoleCommandHandlerTest.class,
+	DefaultKeeperConfigTest.class,
+	FakeRedisExceptionTest.class, 
+	FakeRedisRdbDumperTest.class,
+	FakeRedisRdbDumpLong.class,
+	PsyncHandlerTest.class,
+	SlaveOfCommandHandlerTest.class,
+	KeeperCommandHandlerTest.class,
+	InfoHandlerTest.class,
+	DefaultKeeperStatsTest.class
 })
 public class AllTests {
 

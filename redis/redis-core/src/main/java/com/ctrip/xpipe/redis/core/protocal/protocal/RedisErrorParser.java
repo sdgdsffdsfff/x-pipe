@@ -2,7 +2,6 @@ package com.ctrip.xpipe.redis.core.protocal.protocal;
 
 import com.ctrip.xpipe.redis.core.protocal.RedisClientProtocol;
 import com.ctrip.xpipe.redis.core.protocal.error.RedisError;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
@@ -38,6 +37,11 @@ public class RedisErrorParser extends AbstractRedisClientProtocol<RedisError>{
 	protected ByteBuf getWriteByteBuf() {
 		
 		return Unpooled.wrappedBuffer(getRequestBytes(MINUS_BYTE, payload.errorMessage()));
+	}
+
+	@Override
+	public boolean supportes(Class<?> clazz) {
+		return RedisError.class.isAssignableFrom(clazz);
 	}
 
 }

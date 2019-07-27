@@ -1,5 +1,6 @@
 package com.ctrip.xpipe.concurrent;
 
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,17 +11,21 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class AbstractExceptionLogTask implements Runnable{
 	
-	private Logger logger = LoggerFactory.getLogger(getClass());
+	protected Logger logger = LoggerFactory.getLogger(getClass());
 
 	@Override
 	public void run() {
+		
 		try{
 			doRun();
+		}catch(OutOfMemoryError e){
+			e.printStackTrace();
+			logger.error("[run]", e);
 		}catch(Throwable th){
 			logger.error("[run]", th);
 		}
 	}
 	
-	protected abstract void doRun();
+	protected abstract void doRun() throws Exception;
 
 }

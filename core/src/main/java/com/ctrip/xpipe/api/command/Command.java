@@ -1,9 +1,7 @@
 package com.ctrip.xpipe.api.command;
 
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executor;
 
 /**
  * @author wenchao.meng
@@ -16,16 +14,12 @@ public interface Command<V> {
 	
 	CommandFuture<V> execute() ;
 
-	CommandFuture<V> execute(ExecutorService executors) ;
+	CommandFuture<V> execute(Executor executors) ;
 
-	CommandFuture<V>  execute(int time, TimeUnit timeUnit);
-	
 	String getName();
 	
 	/**
 	 * 重置，可以重新执行
-	 * @throws ExecutionException 
-	 * @throws InterruptedException 
 	 */
 	void reset();
 

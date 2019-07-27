@@ -1,16 +1,15 @@
 package com.ctrip.xpipe.monitor;
 
-import javax.servlet.DispatcherType;
-
+import com.ctrip.xpipe.spring.AbstractProfile;
+import com.dianping.cat.servlet.CatFilter;
+import com.dianping.cat.servlet.CatListener;
 import org.springframework.boot.context.embedded.FilterRegistrationBean;
 import org.springframework.boot.context.embedded.ServletListenerRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
-import com.ctrip.xpipe.spring.AbstractProfile;
-import com.dianping.cat.servlet.CatFilter;
-import com.dianping.cat.servlet.CatListener;
+import javax.servlet.DispatcherType;
 
 /**
  * @author wenchao.meng
@@ -20,6 +19,14 @@ import com.dianping.cat.servlet.CatListener;
 @Configuration
 @Profile(AbstractProfile.PROFILE_NAME_PRODUCTION)
 public class CatConfig {
+
+	public static final String CAT_ENABLED_KEY = "cat.client.enabled";
+	
+	private static final boolean catEnabled = Boolean.parseBoolean(System.getProperty(CAT_ENABLED_KEY, "true"));
+	
+	public static boolean isCatenabled() {
+		return catEnabled;
+	}
 
 	@Bean
 	public FilterRegistrationBean catFilter() {

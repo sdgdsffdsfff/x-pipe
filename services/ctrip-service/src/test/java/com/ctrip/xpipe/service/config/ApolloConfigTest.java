@@ -1,14 +1,13 @@
 package com.ctrip.xpipe.service.config;
 
-import java.io.IOException;
-
+import com.ctrip.xpipe.service.AbstractServiceTest;
+import com.ctrip.xpipe.api.config.Config;
+import com.ctrip.xpipe.api.config.ConfigChangeListener;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
-import com.ctrip.xpipe.AbstractServiceTest;
-import com.ctrip.xpipe.api.config.Config;
-import com.ctrip.xpipe.api.config.ConfigChangeListener;
+import java.io.IOException;
 
 /**
  * @author wenchao.meng
@@ -23,6 +22,8 @@ public class ApolloConfigTest extends AbstractServiceTest{
 		
 		Config config = Config.DEFAULT;
 		Assert.assertTrue(config instanceof ApolloConfig);
+
+
 		
 		String result = config.get("test");
 		logger.info("test value:{}", result);

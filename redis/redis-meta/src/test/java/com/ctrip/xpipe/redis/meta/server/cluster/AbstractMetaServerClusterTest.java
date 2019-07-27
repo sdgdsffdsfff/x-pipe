@@ -1,18 +1,15 @@
 package com.ctrip.xpipe.redis.meta.server.cluster;
 
-
-
-import java.util.LinkedList;
-import java.util.List;
-
-import org.apache.curator.framework.CuratorFramework;
-import org.junit.Before;
-import org.springframework.context.ApplicationContext;
-
+import com.ctrip.xpipe.lifecycle.LifecycleHelper;
 import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerTest;
 import com.ctrip.xpipe.redis.meta.server.TestMetaServer;
 import com.ctrip.xpipe.zk.ZkClient;
 import com.ctrip.xpipe.zk.impl.DefaultZkClient;
+import org.apache.curator.framework.CuratorFramework;
+import org.junit.Before;
+
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * @author wenchao.meng
@@ -21,12 +18,17 @@ import com.ctrip.xpipe.zk.impl.DefaultZkClient;
  */
 public class AbstractMetaServerClusterTest extends AbstractMetaServerTest{
 	
-	private int zkPort = portUsable(defaultZkPort());
+	protected int zkPort = getTestZkPort();
 	
 	@Before
 	public void beforeAbstractMetaServerClusterTest(){
 		
 		startZk(zkPort);
+	}
+	
+	
+	public int getZkPort() {
+		return zkPort;
 	}
 	
 	protected CuratorFramework getCuratorFramework() throws Exception{
@@ -37,29 +39,35 @@ public class AbstractMetaServerClusterTest extends AbstractMetaServerTest{
 		
 		ZkClient client = new DefaultZkClient();
 		client.setZkAddress(String.format("localhost:%d", zkPort));
-		client.initialize();
-		client.start();
+		LifecycleHelper.initializeIfPossible(client);
+		LifecycleHelper.startIfPossible(client);
 		return client.get();
 	}
 
-	@Override
-	protected ApplicationContext createSpringContext() {
-		return null;
-	}
-	
 	protected void createMetaServers(int serverCount) throws Exception{
-		
 		
 		for(int i=0 ; i<serverCount ; i++){
 			
 			int port = portUsable(defaultMetaServerPort());
-			TestMetaServer testMetaServer = new TestMetaServer(i + 1, port, zkPort);
-			testMetaServer.initialize();
-			testMetaServer.start();
+			TestMetaServer testMetaServer = createMetaServer(i+1, port, zkPort);
 			add(testMetaServer);
 		}
 	}
 	
+	protected TestMetaServer createMetaServer(int index, int port, int zkPort) throws Exception {
+		
+		return createMetaServer(index, port, zkPort, TestMetaServer.DEFAULT_CONFIG_FILE);
+	}
+
+	protected TestMetaServer createMetaServer(int index, int port, int zkPort, String configFile) throws Exception {
+		
+		TestMetaServer testMetaServer = new TestMetaServer(index, port, zkPort, configFile);
+		
+		testMetaServer.initialize();
+		testMetaServer.start();
+		return testMetaServer;
+	}
+
 	public List<TestMetaServer> getServers() {
 		return new LinkedList<>(getRegistry().getComponents(TestMetaServer.class).values());
 	}

@@ -1,14 +1,15 @@
 package com.ctrip.xpipe.command;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
 import com.ctrip.xpipe.api.command.Command;
 import com.ctrip.xpipe.api.command.CommandFuture;
 import com.ctrip.xpipe.api.command.CommandFutureListener;
 import com.ctrip.xpipe.utils.XpipeThreadFactory;
+
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @author wenchao.meng
@@ -17,13 +18,26 @@ import com.ctrip.xpipe.utils.XpipeThreadFactory;
  */
 public class ParallelCommandChain extends AbstractCommandChain{
 	
-	private ExecutorService executors;
+	private Executor executors;
 	private List<CommandFuture<?>> completed = new LinkedList<>();
 
-	public ParallelCommandChain(){
-		executors = Executors.newCachedThreadPool(XpipeThreadFactory.create("ParallelCommandChain"));
+	private boolean isLoggable = true;
+
+	public ParallelCommandChain(Executor executors){
+		this.executors = executors;
+		if(this.executors == null){
+			this.executors = Executors.newCachedThreadPool(XpipeThreadFactory.create("ParallelCommandChain"));
+		}
 	}
-	
+
+	public ParallelCommandChain(Executor executors, boolean loggable){
+		this.executors = executors;
+		if(this.executors == null){
+			this.executors = Executors.newCachedThreadPool(XpipeThreadFactory.create("ParallelCommandChain"));
+		}
+		isLoggable = loggable;
+	}
+
 	public ParallelCommandChain(Command<?> ...commands) {
 		this(null, commands);
 	}
@@ -40,6 +54,7 @@ public class ParallelCommandChain extends AbstractCommandChain{
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	@Override
 	protected void doExecute() throws Exception {
+		super.doExecute();
 		
 		for(int i=0; i < commands.size() ;i++){
 			executors.execute(new Runnable() {
@@ -70,8 +85,10 @@ public class ParallelCommandChain extends AbstractCommandChain{
 			return;
 		}
 		
-		if(completed.size() >= getResult().size()){
-			logger.info("[addComplete][all complete]{}", completed.size());
+		if(completed.size() >= commands.size()){
+			if(isLoggable) {
+				logger.info("[addComplete][all complete]{}, {}", completed.size(), getResult().size());
+			}
 			boolean fail = false;
 			for(CommandFuture<?> future : completed){
 				if(!future.isSuccess()){
@@ -79,10 +96,14 @@ public class ParallelCommandChain extends AbstractCommandChain{
 					break;
 				}
 			}
-			if(!fail){
-				future().setSuccess(getResult());
-			}else{
-				future().setFailure(new CommandChainException("execute failure", getResult()));
+			synchronized (this) {
+				if(!future().isDone()){
+					if(!fail){
+						future().setSuccess(getResult());
+					}else{
+						future().setFailure(new CommandChainException("parallel fail", getResult()));
+					}
+				}
 			}
 		}
 	}

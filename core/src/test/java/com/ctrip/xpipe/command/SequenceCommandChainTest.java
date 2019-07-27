@@ -1,13 +1,12 @@
 package com.ctrip.xpipe.command;
 
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-
+import com.ctrip.xpipe.api.command.Command;
+import com.ctrip.xpipe.api.command.CommandFuture;
 import org.junit.Assert;
 import org.junit.Test;
 
-import com.ctrip.xpipe.api.command.Command;
-import com.ctrip.xpipe.api.command.CommandFuture;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 /**
  * @author wenchao.meng
  *
@@ -20,6 +19,7 @@ public class SequenceCommandChainTest extends AbstractCommandChainTest{
 	private String successMessage = randomString();
 	
 	
+	@SuppressWarnings("unchecked")
 	@Test
 	public void testSuccess() throws InterruptedException, ExecutionException{
 		
@@ -27,7 +27,7 @@ public class SequenceCommandChainTest extends AbstractCommandChainTest{
 		
 		SequenceCommandChain chain = new SequenceCommandChain(commands);
 		
-		List<CommandFuture<?>> result = chain.execute().get();
+		List<CommandFuture<?>> result = (List<CommandFuture<?>>) chain.execute().get();
 		Assert.assertEquals(totalCommandCount, result.size());
 		
 	}
@@ -37,7 +37,7 @@ public class SequenceCommandChainTest extends AbstractCommandChainTest{
 		
 		final int sleepInterval = 1000;
 		SequenceCommandChain chain = new SequenceCommandChain(true, createSuccessCommands(totalCommandCount, successMessage, sleepInterval));
-		final CommandFuture<List<CommandFuture<?>>> future = chain.execute();
+		final CommandFuture<Object> future = chain.execute();
 		new Thread(new Runnable() {
 			
 			@Override
@@ -52,17 +52,17 @@ public class SequenceCommandChainTest extends AbstractCommandChainTest{
 		try{
 			future.get();
 		}catch(Exception e){
-			e.printStackTrace();
 		}
 		Assert.assertEquals(1, chain.executeCount());
 		
 	}
 
+	@SuppressWarnings("unchecked")
 	@Test
 	public void testFailContinue() throws InterruptedException, ExecutionException{
 		
 		SequenceCommandChain chain = new SequenceCommandChain(true, createCommands(totalCommandCount, successMessage, failIndex, new Exception("just throw")));
-		List<CommandFuture<?>> result = chain.execute().get();
+		List<CommandFuture<?>> result = (List<CommandFuture<?>>) chain.execute().get();
 		Assert.assertEquals(totalCommandCount, result.size());
 		
 		for(int i=0;i<totalCommandCount;i++){

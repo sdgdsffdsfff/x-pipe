@@ -1,19 +1,14 @@
 package com.ctrip.xpipe.command;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.ctrip.xpipe.api.command.Command;
 import com.ctrip.xpipe.api.command.CommandFuture;
 import com.ctrip.xpipe.api.command.CommandFutureListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.*;
 
 /**
  * @author wenchao.meng
@@ -26,7 +21,7 @@ public class DefaultCommandFuture<V> implements CommandFuture<V>{
 	
 	private volatile Object result = null;
 	
-	private static final CauseHolder  CANCELLED_RESULT = new CauseHolder(new CancellationException());
+	private final CauseHolder CANCELLED_RESULT = new CauseHolder(new CancellationException());
 	
 	private static final String SUCCESS_NO_RESULT = "SUCCESS_NO_RESULT";
 	
@@ -128,7 +123,12 @@ public class DefaultCommandFuture<V> implements CommandFuture<V>{
         CauseHolder(Throwable cause) {
             this.cause = cause;
         }
-    }
+
+		@Override
+		public String toString() {
+			return String.format("%s", cause == null? "null" : cause.getStackTrace());
+		}
+	}
 
 
 	@Override
@@ -337,4 +337,20 @@ public class DefaultCommandFuture<V> implements CommandFuture<V>{
 		return this.command;
 	}
 
+	@Override
+	public String toString() {
+
+		String resultDesc = null;
+
+		if(isDone()){
+			if(isSuccess()){
+				resultDesc = String.format("success:%s", result);
+			}else {
+				resultDesc = String.format("fail:%s", cause());
+			}
+		}else {
+			resultDesc = "undone";
+		}
+		return String.format("cmd:%s, %s", command, resultDesc);
+	}
 }

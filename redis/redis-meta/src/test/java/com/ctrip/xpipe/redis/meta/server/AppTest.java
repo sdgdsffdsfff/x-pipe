@@ -1,18 +1,23 @@
 package com.ctrip.xpipe.redis.meta.server;
 
-import java.io.IOException;
-
+import com.ctrip.xpipe.codec.JsonCodec;
+import com.ctrip.xpipe.redis.core.config.AbstractCoreConfig;
+import com.ctrip.xpipe.redis.core.foundation.IdcUtil;
+import com.ctrip.xpipe.redis.core.meta.DcInfo;
+import com.ctrip.xpipe.redis.meta.server.cluster.impl.ArrangeTaskExecutor;
+import com.ctrip.xpipe.redis.meta.server.config.DefaultMetaServerConfig;
+import com.ctrip.xpipe.redis.meta.server.meta.impl.DefaultDcMetaCache;
+import com.ctrip.xpipe.spring.AbstractProfile;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 
-import com.ctrip.xpipe.lifecycle.SpringComponentRegistry;
-import com.ctrip.xpipe.redis.core.foundation.IdcUtil;
-import com.ctrip.xpipe.redis.meta.server.cluster.impl.ArrangeTaskExecutor;
-import com.ctrip.xpipe.redis.meta.server.meta.impl.DefaultDcMetaCache;
-import com.ctrip.xpipe.zk.impl.TestZkClient;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author shyin
@@ -32,23 +37,44 @@ public class AppTest extends AbstractMetaServerContextTest{
 	@Before
 	public void beforeAppTest(){
 		
+		System.setProperty(AbstractProfile.PROFILE_KEY, AbstractProfile.PROFILE_NAME_PRODUCTION);
 		System.setProperty(ArrangeTaskExecutor.ARRANGE_TASK_EXECUTOR_START, "true");
-	}
-
-	@Test
-	public void start9747() throws Exception {
 		
-		System.setProperty(DefaultDcMetaCache.MEMORY_META_SERVER_DAO_KEY, "metaserver--jq.xml");
-		start();
+		Map<String, DcInfo> dcInfos = new HashMap<>();
+		dcInfos.put("jq", new DcInfo("http://localhost:" + IdcUtil.JQ_METASERVER_PORT));
+		dcInfos.put("oy", new DcInfo("http://localhost:" + IdcUtil.OY_METASERVER_PORT));
+		System.setProperty(DefaultMetaServerConfig.KEY_DC_INFOS, JsonCodec.INSTANCE.encode(dcInfos));
 	}
 
 	
 	@Test
+	public void startZk(){
+		startZk(zkPort);
+	}
+	
+	@Test
+	public void start9747() throws Exception {
+		
+		System.setProperty(DefaultDcMetaCache.MEMORY_META_SERVER_DAO_KEY, "metaserver--jq.xml");
+        System.setProperty(AbstractCoreConfig.KEY_ZK_NAMESPACE, "xpipe_dc1");		
+		start();
+	}
+
+	@Test
+	public void start8747() throws Exception {
+
+		this.serverPort = 8747;
+		System.setProperty(DefaultDcMetaCache.MEMORY_META_SERVER_DAO_KEY, "metaserver--jq.xml");
+		System.setProperty(AbstractCoreConfig.KEY_ZK_NAMESPACE, "xpipe_dc1");
+		start();
+	}
+
+
+	@Test
 	public void start9748() throws Exception {
 		
-		this.zkPort = IdcUtil.OY_ZK_PORT;
 		this.serverPort = IdcUtil.OY_METASERVER_PORT;
-
+        System.setProperty(AbstractCoreConfig.KEY_ZK_NAMESPACE, "xpipe_dc2");		
 		System.setProperty(DefaultDcMetaCache.MEMORY_META_SERVER_DAO_KEY, "metaserver--oy.xml");
 		IdcUtil.setToOY();
 		start();
@@ -58,15 +84,8 @@ public class AppTest extends AbstractMetaServerContextTest{
 	public void start() throws Exception{
 		
 		System.setProperty("server.port", String.valueOf(serverPort));
-		startZk(zkPort);
-		
-		SpringComponentRegistry registry = SpringApplication.run(MetaServerApplication.class, new String[]{}).getBean(SpringComponentRegistry.class);
-		TestZkClient testZkClient = registry.getComponent(TestZkClient.class);
-		testZkClient.setZkAddress(String.format("localhost:%d", zkPort));
-		registry.initialize();
-		registry.start();
-		add(registry);
-		
+		@SuppressWarnings("unused")
+		ApplicationContext applicationContext = SpringApplication.run(MetaServerApplication.class, new String[]{});
 	}
 
 	
@@ -76,7 +95,7 @@ public class AppTest extends AbstractMetaServerContextTest{
 	}
 	
 	@Override
-	protected ApplicationContext createSpringContext() {
+	protected ConfigurableApplicationContext createSpringContext() {
 		return null;
 	}
 	

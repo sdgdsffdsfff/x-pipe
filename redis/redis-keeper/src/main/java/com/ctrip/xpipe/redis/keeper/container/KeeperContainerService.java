@@ -1,7 +1,6 @@
 package com.ctrip.xpipe.redis.keeper.container;
 
 
-
 import com.ctrip.xpipe.api.cluster.LeaderElectorManager;
 import com.ctrip.xpipe.exception.ErrorMessage;
 import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
@@ -9,15 +8,16 @@ import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
 import com.ctrip.xpipe.redis.core.entity.KeeperTransMeta;
 import com.ctrip.xpipe.redis.core.entity.ShardMeta;
 import com.ctrip.xpipe.redis.core.keeper.container.KeeperContainerErrorCode;
-import com.ctrip.xpipe.redis.core.metaserver.MetaServerKeeperService;
+import com.ctrip.xpipe.redis.core.proxy.ProxyResourceManager;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.config.KeeperConfig;
 import com.ctrip.xpipe.redis.keeper.config.KeeperContainerConfig;
 import com.ctrip.xpipe.redis.keeper.exception.RedisKeeperRuntimeException;
 import com.ctrip.xpipe.redis.keeper.impl.DefaultRedisKeeperServer;
+import com.ctrip.xpipe.redis.keeper.monitor.KeepersMonitorManager;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.google.common.collect.Lists;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -32,14 +32,17 @@ import java.util.Set;
  */
 @Service
 public class KeeperContainerService {
+	
 	@Autowired
 	KeeperConfig keeperConfig;
     @Autowired
     private LeaderElectorManager leaderElectorManager;
     @Autowired
-    private MetaServerKeeperService metaService;
-    @Autowired
     private KeeperContainerConfig keeperContainerConfig;
+    @Autowired
+    private KeepersMonitorManager keepersMonitorManager;
+    @Autowired
+    private ProxyResourceManager resourceManager;
 
     private Set<Integer> runningPorts = Sets.newConcurrentHashSet();
     private Map<String, RedisKeeperServer> redisKeeperServers = Maps.newConcurrentMap();
@@ -195,7 +198,7 @@ public class KeeperContainerService {
 
         File baseDir = getReplicationStoreDir(keeperMeta);
 
-        return createRedisKeeperServer(keeperMeta, baseDir, metaService);
+        return createRedisKeeperServer(keeperMeta, baseDir);
     }
 
     private void enrichKeeperMetaFromKeeperTransMeta(KeeperMeta keeperMeta, KeeperTransMeta keeperTransMeta) {
@@ -206,11 +209,10 @@ public class KeeperContainerService {
     }
 
     private RedisKeeperServer createRedisKeeperServer(KeeperMeta keeper,
-                                                      File baseDir,
-                                                      MetaServerKeeperService metaService) throws Exception {
+                                                      File baseDir) throws Exception {
 
         RedisKeeperServer redisKeeperServer = new DefaultRedisKeeperServer(keeper, keeperConfig,
-                baseDir, metaService, leaderElectorManager);
+                baseDir, leaderElectorManager, keepersMonitorManager, resourceManager);
 
         register(redisKeeperServer);
         return redisKeeperServer;

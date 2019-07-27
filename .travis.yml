@@ -1,6 +1,11 @@
 language: java
 jdk:
-  - oraclejdk7
+  - oraclejdk8
+dist:
+  trusty
+cache:
+  directories:
+      - $HOME/.m2
 notification:
   email:
     recipients:
@@ -12,12 +17,16 @@ before_script:
   
 before_install:
 
+script:
+    echo "skip test...."
+
 after_success:
-  - mvn clean generate-resources cobertura:cobertura coveralls:report
+  - mvn -Dlog.console.close=true  clean generate-resources cobertura:cobertura coveralls:report
 
 branches:
   only:
     - master
+    - dev
     - coverity_scan
     
 env:

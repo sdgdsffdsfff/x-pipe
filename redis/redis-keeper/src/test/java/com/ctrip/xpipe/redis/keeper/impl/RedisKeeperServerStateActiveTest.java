@@ -1,19 +1,23 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
 
-
-
-import java.io.IOException;
-import java.net.InetSocketAddress;
-
+import com.ctrip.xpipe.api.endpoint.Endpoint;
+import com.ctrip.xpipe.endpoint.DefaultEndPoint;
+import com.ctrip.xpipe.proxy.ProxyEnabledEndpoint;
+import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
+import com.ctrip.xpipe.redis.core.meta.ShardStatus;
+import com.ctrip.xpipe.redis.core.proxy.parser.DefaultProxyConnectProtocolParser;
+import com.ctrip.xpipe.redis.core.proxy.protocols.DefaultProxyConnectProtocol;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.xml.sax.SAXException;
 
-import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
-import com.ctrip.xpipe.redis.core.meta.ShardStatus;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+
+import static org.mockito.Mockito.*;
 
 /**
  * @author wenchao.meng
@@ -50,14 +54,14 @@ public class RedisKeeperServerStateActiveTest extends AbstractRedisKeeperServerS
 	@Test
 	public void testActiveActive(){
 		
-		active.becomeActive(new InetSocketAddress("localhost", randomPort()));
+		active.becomeActive(new DefaultEndPoint("localhost", randomPort()));
 		
 	}
 
 	@Test
 	public void testActiveBackup() throws IOException{
 
-		active.becomeBackup(new InetSocketAddress("localhost", randomPort()));
+		active.becomeBackup(new DefaultEndPoint("localhost", randomPort()));
 		Assert.assertTrue(redisKeeperServer.getRedisKeeperServerState() instanceof RedisKeeperServerStateBackup);
 		
 	}
@@ -65,5 +69,24 @@ public class RedisKeeperServerStateActiveTest extends AbstractRedisKeeperServerS
 	@After
 	public void afterRedisKeeperServerStateTest(){
 		
+	}
+
+	@Test
+	public void testSetMaster() {
+		active = spy(active);
+		Endpoint endpoint = new ProxyEnabledEndpoint(redisMasterMeta.getIp(), redisMasterMeta.getPort(),
+				new DefaultProxyConnectProtocolParser().read("PROXY ROUTE PROXYTCP://127.0.0.1:80 PROXYTLS://127.0.0.2:443"));
+		active.becomeActive(endpoint);
+		verify(active, times(1)).keeperMasterChanged();
+
+
+		active.becomeActive(endpoint);
+		verify(active, times(1)).keeperMasterChanged();
+
+		endpoint = new ProxyEnabledEndpoint(redisMasterMeta.getIp(), redisMasterMeta.getPort(),
+				new DefaultProxyConnectProtocolParser().read("PROXY ROUTE PROXYTCP://127.0.0.1:80 PROXYTLS://127.0.0.3:443"));
+		active.becomeActive(endpoint);
+
+		verify(active, times(2)).keeperMasterChanged();
 	}
 }

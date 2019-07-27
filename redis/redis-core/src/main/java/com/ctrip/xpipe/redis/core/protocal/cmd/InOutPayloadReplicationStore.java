@@ -1,15 +1,14 @@
 package com.ctrip.xpipe.redis.core.protocal.cmd;
 
 
-import java.io.IOException;
-import java.nio.channels.WritableByteChannel;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import com.ctrip.xpipe.api.payload.InOutPayload;
 import com.ctrip.xpipe.payload.AbstractInOutPayload;
 import com.ctrip.xpipe.redis.core.store.RdbStore;
-
 import io.netty.buffer.ByteBuf;
+
+import java.io.IOException;
+import java.nio.channels.WritableByteChannel;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author wenchao.meng
@@ -39,6 +38,16 @@ public class InOutPayloadReplicationStore extends AbstractInOutPayload implement
 	}
 
 	@Override
+	public void endInputTruncate(int reduceLen) throws IOException {
+		rdbStore.truncateEndRdb(reduceLen);
+	}
+	
+	@Override
+	protected void doEndInput() throws IOException {
+		rdbStore.endRdb();
+		super.doEndInput();
+	}
+	@Override
 	public void doStartOutput() throws IOException {
 		
 	}
@@ -48,10 +57,14 @@ public class InOutPayloadReplicationStore extends AbstractInOutPayload implement
 		throw new UnsupportedOperationException("Should not call doOut");
 	}
 
-
 	@Override
 	public void doEndOutput() {
 		stop.set(true);
+	}
+
+	@Override
+	protected void doTruncate(int reduceLen) throws IOException {
+		
 	}
 
 }

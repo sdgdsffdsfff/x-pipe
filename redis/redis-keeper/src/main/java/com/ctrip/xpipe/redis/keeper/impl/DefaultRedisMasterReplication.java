@@ -1,28 +1,29 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
-import java.io.IOException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-
-
 import com.ctrip.xpipe.api.command.Command;
 import com.ctrip.xpipe.api.server.PARTIAL_STATE;
-import com.ctrip.xpipe.command.CommandExecutionException;
+import com.ctrip.xpipe.concurrent.AbstractExceptionLogTask;
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
+import com.ctrip.xpipe.redis.core.protocal.MASTER_STATE;
 import com.ctrip.xpipe.redis.core.protocal.Psync;
 import com.ctrip.xpipe.redis.core.protocal.cmd.DefaultPsync;
 import com.ctrip.xpipe.redis.core.protocal.cmd.Replconf;
 import com.ctrip.xpipe.redis.core.protocal.cmd.Replconf.ReplConfType;
-import com.ctrip.xpipe.redis.core.store.ReplicationStore;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+import com.ctrip.xpipe.redis.core.proxy.ProxyResourceManager;
 import com.ctrip.xpipe.redis.keeper.RdbDumper;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.RedisMaster;
-
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.nio.NioEventLoopGroup;
+
+import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author wenchao.meng
@@ -34,17 +35,24 @@ public class DefaultRedisMasterReplication extends AbstractRedisMasterReplicatio
 	private volatile PARTIAL_STATE partialState = PARTIAL_STATE.UNKNOWN;
 
 	private ScheduledFuture<?> replConfFuture;
-	
-	private ScheduledExecutorService scheduled;
-	
-	public DefaultRedisMasterReplication(RedisMaster redisMaster, RedisKeeperServer redisKeeperServer, ScheduledExecutorService scheduled) {
-		super(redisKeeperServer, redisMaster);
-		this.scheduled = scheduled;
+
+	public DefaultRedisMasterReplication(RedisMaster redisMaster, RedisKeeperServer redisKeeperServer,
+										 NioEventLoopGroup nioEventLoopGroup, ScheduledExecutorService scheduled,
+										 int replTimeoutMilli, ProxyResourceManager endpointManager) {
+		super(redisKeeperServer, redisMaster, nioEventLoopGroup, scheduled, replTimeoutMilli, endpointManager);
 	}
 
+	public DefaultRedisMasterReplication(RedisMaster redisMaster, RedisKeeperServer redisKeeperServer,
+										 NioEventLoopGroup nioEventLoopGroup, ScheduledExecutorService scheduled,
+										 ProxyResourceManager endpointManager) {
+		this(redisMaster, redisKeeperServer, nioEventLoopGroup, scheduled, DEFAULT_REPLICATION_TIMEOUT_MILLI,
+				endpointManager);
+	}
 
 	@Override
 	protected void doConnect(Bootstrap b) {
+		
+		redisMaster.setMasterState(MASTER_STATE.REDIS_REPL_CONNECTING);
 
 		tryConnect(b).addListener(new ChannelFutureListener() {
 			
@@ -68,7 +76,16 @@ public class DefaultRedisMasterReplication extends AbstractRedisMasterReplicatio
 				}
 			}
 		});
+	}
+	
+	
+	@Override
+	public void masterConnected(Channel channel) {
 		
+		redisMaster.setMasterState(MASTER_STATE.REDIS_REPL_HANDSHAKE);
+		
+		super.masterConnected(channel);
+		cancelReplConf();
 	}
 	
 	@Override
@@ -80,24 +97,25 @@ public class DefaultRedisMasterReplication extends AbstractRedisMasterReplicatio
 		if (scheduleTime < 0) {
 			scheduleTime = 0;
 		}
-		scheduled.schedule(new Runnable() {
+		logger.info("[masterDisconntected][reconnect after {} ms]", scheduleTime);
+		scheduled.schedule(new AbstractExceptionLogTask() {
 
 			@Override
-			public void run() {
+			public void doRun() {
 				connectWithMaster();
 			}
 		}, scheduleTime, TimeUnit.MILLISECONDS);
 	}
-
 	
+	public void setMasterConnectRetryDelaySeconds(int masterConnectRetryDelaySeconds) {
+		this.masterConnectRetryDelaySeconds = masterConnectRetryDelaySeconds;
+	}
+
 	@Override
 	public void stopReplication() {
 		super.stopReplication();
-		
-		if (replConfFuture != null) {
-			replConfFuture.cancel(true);
-			replConfFuture = null;
-		}
+
+		cancelReplConf();
 	}
 
 	private void scheduleReplconf() {
@@ -105,66 +123,48 @@ public class DefaultRedisMasterReplication extends AbstractRedisMasterReplicatio
 		if (logger.isInfoEnabled()) {
 			logger.info("[scheduleReplconf]" + this);
 		}
+		
+		cancelReplConf();
 
-		replConfFuture = scheduled.scheduleWithFixedDelay(new Runnable() {
-
+		replConfFuture = scheduled.scheduleWithFixedDelay(new AbstractExceptionLogTask() {
+			
 			@Override
-			public void run() {
-				try {
-
-					logger.debug("[run][send ack]{}", masterChannel);
-					Command<Object> command = new Replconf(clientPool, ReplConfType.ACK, String.valueOf(redisMaster.getCurrentReplicationStore().getEndOffset()));
-					command.execute();
-				} catch (Throwable th) {
-					logger.error("[run][send replack error]" + DefaultRedisMasterReplication.this, th);
-				}
+			protected void doRun() throws Exception {
+				
+				logger.debug("[run][send ack]{}", masterChannel);
+				
+				Command<Object> command = createReplConf();
+				command.execute();
+				
 			}
-		}, REPLCONF_INTERVAL_MILLI, REPLCONF_INTERVAL_MILLI, TimeUnit.MILLISECONDS);
+
+		}, 0, REPLCONF_INTERVAL_MILLI, TimeUnit.MILLISECONDS);
 	}
 
-
-	@Override
-	protected void kinfoFail(Throwable e) {
+	protected void cancelReplConf() {
 		
-		logger.info("[doWhenKinfoFail][retry]");
-		scheduled.schedule(new Runnable() {
-
-			@Override
-			public void run() {
-				try {
-					executeCommand(kinfoCommand());
-				} catch (CommandExecutionException e) {
-					logger.error("[run]", e);
-				}
-			}
-		}, 1, TimeUnit.SECONDS);
+		if (replConfFuture != null) {
+			replConfFuture.cancel(true);
+			replConfFuture = null;
+		}
+	}
+	
+	protected Command<Object> createReplConf() {
+		
+		return new Replconf(clientPool, ReplConfType.ACK, scheduled, String.valueOf(redisMaster.getCurrentReplicationStore().getEndOffset()));
 	}
 
 	@Override
 	protected void psyncFail(Throwable cause) {
 		
-		logger.info("[psyncFail][retry]");
-		
-		if(masterChannel.isActive()){
-			
-			scheduled.schedule(new Runnable() {
-				
-				@Override
-				public void run() {
-					try {
-						sendReplicationCommand();
-					} catch (CommandExecutionException e) {
-						logger.error("[run]" + DefaultRedisMasterReplication.this, e);
-					}
-				}
-			}, PSYNC_RETRY_INTERVAL_MILLI, TimeUnit.MILLISECONDS);
-		}
+		logger.info("[psyncFail][close channel, wait for reconnect]" + this, cause);
+		masterChannel.close();
 	}
 
 	@Override
 	protected Psync createPsync() {
 		
-		Psync psync = new DefaultPsync(clientPool, redisMaster.masterEndPoint(), redisMaster.getReplicationStoreManager());
+		Psync psync = new DefaultPsync(clientPool, redisMaster.masterEndPoint(), redisMaster.getReplicationStoreManager(), scheduled);
 		psync.addPsyncObserver(this);
 		psync.addPsyncObserver(redisKeeperServer);
 		return psync;
@@ -177,22 +177,32 @@ public class DefaultRedisMasterReplication extends AbstractRedisMasterReplicatio
 
 
 	@Override
-	protected void doBeginWriteRdb(long fileSize, long masterRdbOffset) throws IOException {
+	protected void doBeginWriteRdb(EofType eofType, long masterRdbOffset) throws IOException {
+
+		redisMaster.setMasterState(MASTER_STATE.REDIS_REPL_TRANSFER);
 		
 		partialState = PARTIAL_STATE.FULL;
 		redisMaster.getCurrentReplicationStore().getMetaStore().setMasterAddress((DefaultEndPoint) redisMaster.masterEndPoint());
-		if(redisKeeperServer.getRedisKeeperServerState().sendKinfo()){
-			redisMaster.getCurrentReplicationStore().getMetaStore().updateMeta(ReplicationStore.BACKUP_REPLICATION_STORE_REDIS_MASTER_META_NAME, masterRdbOffset);
-		}
 	}
 
 	@Override
 	protected void doEndWriteRdb() {
+		logger.info("[doEndWriteRdb]{}", this);
+		redisMaster.setMasterState(MASTER_STATE.REDIS_REPL_CONNECTED);
 		scheduleReplconf();
+		
 	}
 
 	@Override
-	protected void doOnContinue() {
+	protected void doOnContinue(){
+		
+		logger.info("[doOnContinue]{}", this);
+		redisMaster.setMasterState(MASTER_STATE.REDIS_REPL_CONNECTED);
+		try {
+			redisMaster.getCurrentReplicationStore().getMetaStore().setMasterAddress((DefaultEndPoint) redisMaster.masterEndPoint());
+		} catch (IOException e) {
+			logger.error("[doOnContinue]" + this, e);
+		}
 		
 		scheduleReplconf();
 		partialState = PARTIAL_STATE.PARTIAL;
@@ -208,13 +218,18 @@ public class DefaultRedisMasterReplication extends AbstractRedisMasterReplicatio
 	protected void doOnFullSync() {
 		
 		try {
-			logger.info("[doOnFullSync]{}", masterChannel);
+			logger.info("[doOnFullSync]{}", this);
 			RdbDumper rdbDumper  = new RedisMasterReplicationRdbDumper(this, redisKeeperServer);
 			setRdbDumper(rdbDumper);
 			redisKeeperServer.setRdbDumper(rdbDumper, true);
-		} catch (RdbDumperAlreadyExist e) {
+		} catch (SetRdbDumperException e) {
 			//impossible to happen
 			logger.error("[doOnFullSync][impossible to happen]", e);
 		}
+	}
+
+	@Override
+	protected String getSimpleName() {
+		return "DefRep";
 	}
 }

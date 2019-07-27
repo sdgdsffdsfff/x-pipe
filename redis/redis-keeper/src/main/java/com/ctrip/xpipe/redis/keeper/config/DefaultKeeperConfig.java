@@ -10,13 +10,15 @@ import com.ctrip.xpipe.redis.core.config.AbstractCoreConfig;
  */
 public class DefaultKeeperConfig extends AbstractCoreConfig implements KeeperConfig {
 	
-
 	public static final String KEY_REPLICATION_STORE_GC_INTERVAL_SECONDS = "replicationstore.gc.interval.seconds";
 	public static final String KEY_REPLICATION_STORE_COMMANDFILE_SIZE = "replicationstore.commandfile.size";
 	public static final String KEY_REPLICATION_STORE_COMMANDFILE_NUM_KEEP = "replicationstore.commandfile.num.keep";
 	public static final String KEY_REPLICATION_STORE_MINITIME_GC_AFTERCREATE = "replicationstore.mintime.gc.aftercreate";
 	public static final String KEY_REPLICATION_STORE_MAX_COMMANDS_TO_TRANSFER_BEFORE_CREATE_RDB = "replicationstore.max.commands.to.transfer";
+	public static final String KEY_COMMAND_READER_FLYING_THRESHOLD = "command.reader.flying.threshold";
 	public static final String KEY_RDB_DUMP_MIN_INTERVAL = "rdbdump.min.interval";
+	public static final String KEY_DELAY_LOG_LIMIT_MICRO = "monitor.delay.log.limit.micro";
+    private static final String KEY_TRAFFIC_REPORT_INTERVAL = "monitor.traffic.report.interval";
 
 	@Override
 	public int getMetaServerConnectTimeout() {
@@ -51,12 +53,12 @@ public class DefaultKeeperConfig extends AbstractCoreConfig implements KeeperCon
 
 	@Override
 	public long getReplicationStoreMaxCommandsToTransferBeforeCreateRdb() {
-		return getIntProperty(KEY_REPLICATION_STORE_MAX_COMMANDS_TO_TRANSFER_BEFORE_CREATE_RDB, 100);
+		return getLongProperty(KEY_REPLICATION_STORE_MAX_COMMANDS_TO_TRANSFER_BEFORE_CREATE_RDB, 100L);
 	}
 
 	@Override
 	public int getRdbDumpMinIntervalMilli() {
-		return getIntProperty(KEY_RDB_DUMP_MIN_INTERVAL, 60000);
+		return getIntProperty(KEY_RDB_DUMP_MIN_INTERVAL, 3600000);
 	}
 
 	@Override
@@ -64,4 +66,19 @@ public class DefaultKeeperConfig extends AbstractCoreConfig implements KeeperCon
 	int getReplicationStoreMinTimeMilliToGcAfterCreate(){
 		return getIntProperty(KEY_REPLICATION_STORE_MINITIME_GC_AFTERCREATE, 60000);
 	}
+
+	@Override
+	public long getCommandReaderFlyingThreshold() {
+		return getLongProperty(KEY_COMMAND_READER_FLYING_THRESHOLD, (long) (1 << 15));
+	}
+
+	@Override
+	public int getDelayLogLimitMicro() {
+		return getIntProperty(KEY_DELAY_LOG_LIMIT_MICRO, 10000);
+	}
+
+    @Override
+    public long getTrafficReportIntervalMillis() {
+        return getLongProperty(KEY_TRAFFIC_REPORT_INTERVAL, DEFAULT_TRAFFIC_REPORT_INTERVAL_MILLIS);
+    }
 }

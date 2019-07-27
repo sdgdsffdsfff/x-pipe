@@ -1,6 +1,8 @@
 <div>
     <h3 class="header smaller lighter blue">
         &nbsp;&nbsp;&nbsp;&nbsp;
+        <a href="/#/cluster_list">Cluster List</a>
+        <span> > </span>
         <a href="/#/cluster_list?clusterName={{clusterName}}">{{clusterName}}</a>
         <span> > </span>
         <a href="/#/cluster_dc_shards?clusterName={{clusterName}}">详情</a>
@@ -23,7 +25,7 @@
                 <div class="panel panel-primary" style="margin-top: 15px;">
                     <header class="panel-heading">
                         <div class="row">
-                            <div class="col-md-6">{{shard.id}}</div>
+                            <div class="col-md-6">{{shardName}}</div>
                             <div class="col-md-6 text-right">
                                 <button type="button" class="btn btn-primary btn-sm" ng-click="preCreateRedis()">
                                     新增Redis
@@ -55,7 +57,7 @@
                         <tbody>
                         <tr ng-repeat="redis in dcShards[currentDcName].redises">
                             <td title="{{redis.runId}}">
-                                <span class="label label-info" ng-if="redis.redisMaster == 0">
+                                <span class="label label-info" ng-if="redis.master === true">
                                     Master</span>  Redis
                             </td>
                             <td ng-bind="redis.redisIp">
@@ -85,7 +87,7 @@
             </div>
             <div class="col-md-6 text-right">
                 <button type="button" class="btn btn-primary btn-sm" ng-click="submitUpdates()">提交</button>
-                <a class="btn btn-info btn-sm" href="/#/cluster_dc_shards?clusterName={{clusterName}}">取消</a>
+                <a class="btn btn-info btn-sm" href="/#/cluster_dc_shards/{{clusterName}}/{{currentDcName}}">取消</a>
             </div>
         </div>
 
@@ -126,19 +128,18 @@
                     </div>
                 </div>
 
-                <div class="form-group" ng-show="!hasRedisMaster">
+                <div class="form-group" ng-show="!hasRedisMaster && masterDcName === currentDcName">
                     <label class="col-sm-4 control-label">
                         Master
                     </label>
                     <div class="col-sm-6">
                         <label class="radio-inline">
-                            <input type="radio" name="isMaster" value="0" ng-model="toCreateRedis.redisMaster"> 是
+                            <input type="radio" name="isMaster" data-ng-value="true" ng-model="toCreateRedis.master"> 是
                         </label>
                         <label class="radio-inline">
-                            <input type="radio" name="isMaster" value="-1" ng-model="toCreateRedis.redisMaster"
+                            <input type="radio" name="isMaster" data-ng-value="false" ng-model="toCreateRedis.master"
                                    ng-checked="true"> 否
                         </label>
-
                     </div>
                 </div>
             </div>
@@ -174,7 +175,7 @@
                             <select class="form-control" ng-model="toCreateFirstKeeper.keepercontainerId">
                                 <option ng-repeat="keeperContainer in keeperContainers"
                                         value="{{keeperContainer.keepercontainerId}}"
-                                ng-bind="keeperContainer.keepercontainerIp"></option>
+                                ng-bind="keeperContainer.keepercontainerIp + ':' + keeperContainer.keepercontainerPort"></option>
                             </select>
                         </div>
                     </div>
@@ -199,7 +200,7 @@
                             <select class="form-control" ng-model="toCreateOtherKeeper.keepercontainerId">
                                 <option ng-repeat="keeperContainer in keeperContainers"
                                         value="{{keeperContainer.keepercontainerId}}"
-                                        ng-bind="keeperContainer.keepercontainerIp"></option>
+                                        ng-bind="keeperContainer.keepercontainerIp + ':' + keeperContainer.keepercontainerPort"></option>
                             </select>
                         </div>
                     </div>

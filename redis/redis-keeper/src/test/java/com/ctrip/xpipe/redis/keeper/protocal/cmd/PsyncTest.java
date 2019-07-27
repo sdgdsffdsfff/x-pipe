@@ -1,25 +1,25 @@
 package com.ctrip.xpipe.redis.keeper.protocal.cmd;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-
+import com.ctrip.xpipe.api.command.CommandFuture;
+import com.ctrip.xpipe.api.command.CommandFutureListener;
+import com.ctrip.xpipe.api.pool.SimpleObjectPool;
+import com.ctrip.xpipe.endpoint.DefaultEndPoint;
+import com.ctrip.xpipe.exception.XpipeException;
+import com.ctrip.xpipe.lifecycle.LifecycleHelper;
+import com.ctrip.xpipe.netty.NettyPoolUtil;
+import com.ctrip.xpipe.netty.commands.NettyClient;
+import com.ctrip.xpipe.redis.core.protocal.cmd.DefaultPsync;
+import com.ctrip.xpipe.redis.core.protocal.protocal.LenEofType;
+import com.ctrip.xpipe.redis.core.redis.RunidGenerator;
+import com.ctrip.xpipe.redis.core.store.ReplicationStoreManager;
+import com.ctrip.xpipe.redis.keeper.AbstractRedisKeeperTest;
+import com.ctrip.xpipe.redis.keeper.store.DefaultReplicationStore;
+import io.netty.buffer.ByteBuf;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.ctrip.xpipe.api.pool.SimpleObjectPool;
-import com.ctrip.xpipe.endpoint.DefaultEndPoint;
-import com.ctrip.xpipe.exception.XpipeException;
-import com.ctrip.xpipe.netty.NettyPoolUtil;
-import com.ctrip.xpipe.netty.commands.NettyClient;
-import com.ctrip.xpipe.redis.core.protocal.cmd.DefaultPsync;
-import com.ctrip.xpipe.redis.core.store.ReplicationStoreManager;
-import com.ctrip.xpipe.redis.keeper.AbstractRedisKeeperTest;
-import com.ctrip.xpipe.redis.keeper.store.DefaultReplicationStore;
-import com.ctrip.xpipe.redis.keeper.store.RdbStoreExeption;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
+import java.io.IOException;
 
 /**
  * @author wenchao.meng
@@ -28,15 +28,13 @@ import io.netty.buffer.ByteBufAllocator;
  */
 public class PsyncTest extends AbstractRedisKeeperTest{
 	
-	
-	private ByteBufAllocator allocator  = ByteBufAllocator.DEFAULT;
 	private DefaultPsync psync;
 	
 	private ReplicationStoreManager replicationStoreManager;
 	private DefaultReplicationStore replicationStore;
 
 	private String masterId = randomString(40);
-	private Long masterOffset = 1024L;
+	private Long masterOffset;
 	private String rdbContent = randomString();
 	private String commandContent = randomString();
 	
@@ -45,11 +43,22 @@ public class PsyncTest extends AbstractRedisKeeperTest{
 	@Before
 	public void beforePsyncTest() throws Exception{
 		
+		masterOffset = (long) randomInt(0, Integer.MAX_VALUE - 1);
 		replicationStoreManager = createReplicationStoreManager();
+		LifecycleHelper.initializeIfPossible(replicationStoreManager);
 		replicationStore = (DefaultReplicationStore) replicationStoreManager.create();
 		
-		SimpleObjectPool<NettyClient> clientPool = NettyPoolUtil.createNettyPool(new InetSocketAddress("127.0.0.1", 1234));
-		psync = new DefaultPsync(clientPool, new DefaultEndPoint("127.0.0.1", 1234), replicationStoreManager);
+		SimpleObjectPool<NettyClient> clientPool = NettyPoolUtil.createNettyPool(new DefaultEndPoint("127.0.0.1", 1234));
+		psync = new DefaultPsync(clientPool, new DefaultEndPoint("127.0.0.1", 1234), replicationStoreManager, scheduled);
+		psync.future().addListener(new CommandFutureListener<Object>() {
+			
+			@Override
+			public void operationComplete(CommandFuture<Object> commandFuture) throws Exception {
+				if(!commandFuture.isSuccess()){
+					logger.error("[operationComplete]", commandFuture.cause());
+				}
+			}
+		});
 	}
 
 	@Test
@@ -61,15 +70,99 @@ public class PsyncTest extends AbstractRedisKeeperTest{
 				commandContent
 		};
 		//create store
-		replicationStore.beginRdb(masterId, masterOffset, 12345);
-		try{
-			replicationStore.getRdbStore().endRdb();
-			Assert.fail();
-		}catch(RdbStoreExeption e){
-		}
+		replicationStore.beginRdb(masterId, masterOffset, new LenEofType(0));
+		replicationStore.getRdbStore().endRdb();
+		
 		runData(data);
 	}
 
+	@Test
+	public void testPsync2() throws XpipeException, IOException, InterruptedException{
+
+		isPartial = true;
+		
+		String newReplId = RunidGenerator.DEFAULT.generateRunid();
+		String []data = new String[]{
+				"+" + DefaultPsync.PARTIAL_SYNC + " " + newReplId + "\r\n",
+				commandContent
+		};
+		//create store
+		replicationStore.beginRdb(masterId, masterOffset, new LenEofType(0));
+		replicationStore.getRdbStore().endRdb();
+		
+		Long secondReplIdOffset = replicationStore.getEndOffset() + 1;
+		
+		runData(data);
+		
+		Assert.assertEquals(newReplId, replicationStore.getMetaStore().getReplId());
+		Assert.assertEquals(masterId, replicationStore.getMetaStore().getReplId2());
+		Assert.assertEquals(secondReplIdOffset, replicationStore.getMetaStore().getSecondReplIdOffset());
+	}
+
+	@Test
+	public void testPsync2Spaces() throws XpipeException, IOException, InterruptedException{
+
+		isPartial = true;
+		String newReplId = RunidGenerator.DEFAULT.generateRunid();
+
+		String []data = new String[]{
+				"+" + DefaultPsync.PARTIAL_SYNC + "   " + newReplId + "  \r\n",
+				commandContent
+		};
+		//create store
+		replicationStore.beginRdb(masterId, masterOffset, new LenEofType(0));
+		replicationStore.getRdbStore().endRdb();
+		
+		Long secondReplIdOffset = replicationStore.getEndOffset() + 1;
+
+		runData(data);
+		
+		Assert.assertEquals(newReplId, replicationStore.getMetaStore().getReplId());
+		Assert.assertEquals(masterId, replicationStore.getMetaStore().getReplId2());
+		Assert.assertEquals(secondReplIdOffset, replicationStore.getMetaStore().getSecondReplIdOffset());
+	}
+	
+	@Test
+	public void testPsync2SplitTcp() throws XpipeException, IOException, InterruptedException{
+
+		isPartial = true;
+		String newReplId = RunidGenerator.DEFAULT.generateRunid();
+
+		String []data = new String[]{
+				"+" + DefaultPsync.PARTIAL_SYNC , 
+				"  " + newReplId + "  \r\n",
+				commandContent
+		};
+		//create store
+		replicationStore.beginRdb(masterId, masterOffset, new LenEofType(0));
+		replicationStore.getRdbStore().endRdb();
+		
+		Long secondReplIdOffset = replicationStore.getEndOffset() + 1;
+
+		runData(data);
+		
+		Assert.assertEquals(newReplId, replicationStore.getMetaStore().getReplId());
+		Assert.assertEquals(masterId, replicationStore.getMetaStore().getReplId2());
+		Assert.assertEquals(secondReplIdOffset, replicationStore.getMetaStore().getSecondReplIdOffset());
+	}
+
+	
+	@Test
+	public void testPsyncEofMark() throws XpipeException, IOException, InterruptedException{
+		
+		String eof = RunidGenerator.DEFAULT.generateRunid();
+		String []data = new String[]{
+				"+" + DefaultPsync.FULL_SYNC + " " + masterId + " " + masterOffset + "\r\n",
+				"$EOF:" + eof + "\r\n",
+				rdbContent,
+				eof,
+				commandContent
+		};
+		
+		runData(data);
+	}
+
+	
 	@Test
 	public void testPsyncFullRight() throws XpipeException, IOException, InterruptedException{
 		
@@ -111,7 +204,29 @@ public class PsyncTest extends AbstractRedisKeeperTest{
 		runData(data);
 	}
 
+	@Test
+	public void testPsyncFailHalfRdb() throws XpipeException, IOException, InterruptedException{
+		
+		psync.addFutureListener();
+		
+		int midIndex = rdbContent.length()/2;
+		String []data = new String[]{
+				"+" + DefaultPsync.FULL_SYNC + " " + masterId + " " + masterOffset + "\r\n",
+				"$" + rdbContent.length() + "\r\n",
+				rdbContent.substring(0, midIndex) + "\r\n",
+		};
+		runData(data, false);
+		
+		psync.clientClosed(null);
+		
+		Assert.assertFalse(replicationStore.getRdbStore().checkOk());
+	}
+
 	private void runData(String []data) throws XpipeException, IOException, InterruptedException {
+		runData(data, true);
+	}
+
+	private void runData(String []data, boolean assertResult) throws XpipeException, IOException, InterruptedException {
 		
 		ByteBuf []byteBufs = new ByteBuf[data.length];
 		
@@ -119,7 +234,7 @@ public class PsyncTest extends AbstractRedisKeeperTest{
 			
 			byte []bdata = data[i].getBytes();
 			
-			byteBufs[i] = allocator.buffer(bdata.length); 
+			byteBufs[i] = directByteBuf(bdata.length);
 			byteBufs[i].writeBytes(bdata);
 		}
 		
@@ -127,7 +242,9 @@ public class PsyncTest extends AbstractRedisKeeperTest{
 			psync.receive(null, byteBuf);
 		}
 
-		assertResult();
+		if(assertResult){
+			assertResult();
+		}
 		
 	}
 
@@ -135,15 +252,13 @@ public class PsyncTest extends AbstractRedisKeeperTest{
 		replicationStore = (DefaultReplicationStore) replicationStoreManager.getCurrent();
 		
 		String rdbResult = readRdbFileTilEnd(replicationStore);
-		String commandResult = readCommandFileTilEnd(replicationStore);
+		String commandResult = readCommandFileTilEnd(replicationStore, commandContent.length());
 		
 		if(!isPartial){
 			Assert.assertEquals(rdbContent, rdbResult);
-			System.out.println(commandContent);
 		}else{
 			Assert.assertTrue(rdbResult == null || rdbResult.length() == 0);
 		}
-		System.out.println(commandResult);
 		Assert.assertEquals(commandContent, commandResult);
 	}
 }

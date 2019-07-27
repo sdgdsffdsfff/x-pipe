@@ -1,19 +1,17 @@
 package com.ctrip.xpipe.redis.core.meta.comparator;
 
 
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-
-import org.apache.commons.lang3.builder.EqualsBuilder;
+import com.ctrip.xpipe.redis.core.BaseEntity;
+import com.ctrip.xpipe.redis.core.meta.MetaComparator;
+import com.ctrip.xpipe.redis.core.meta.MetaComparatorVisitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.unidal.tuple.Triple;
 
-import com.ctrip.xpipe.redis.core.BaseEntity;
-import com.ctrip.xpipe.redis.core.meta.MetaComparator;
-import com.ctrip.xpipe.redis.core.meta.MetaComparatorVisitor;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * @author wenchao.meng
@@ -38,17 +36,17 @@ public abstract class AbstractMetaComparator<T, C extends Enum<C>> implements Me
 	 * @param future
 	 * @return added, modified, delted
 	 */
-	protected Triple<Set<String>, Set<String>, Set<String>> getDiff(Set<String> current, Set<String> future) {
+	protected <Type> Triple<Set<Type>, Set<Type>, Set<Type>> getDiff(Set<Type> current, Set<Type> future) {
 		
-		Set<String> added = new HashSet<>(future);
-		Set<String> modified = new HashSet<>(future);
-		Set<String> deleted = new HashSet<>(current);
+		Set<Type> added = new HashSet<>(future);
+		Set<Type> modified = new HashSet<>(future);
+		Set<Type> deleted = new HashSet<>(current);
 		
 		added.removeAll(deleted);
 		modified.retainAll(deleted);
 		deleted.removeAll(future);
 		
-		return new Triple<Set<String>, Set<String>, Set<String>>(added, modified, deleted);
+		return new Triple<Set<Type>, Set<Type>, Set<Type>>(added, modified, deleted);
 	}
 
 	@Override
@@ -66,15 +64,23 @@ public abstract class AbstractMetaComparator<T, C extends Enum<C>> implements Me
 	public Set<MetaComparator> getMofified() {
 		return modified;
 	}
-	
+
 	public List<ConfigChanged<C>> getConfigChanged() {
 		return new LinkedList<>(configChanged);
 	}
-	
+
 	protected boolean reflectionEquals(BaseEntity<?> currentMeta, BaseEntity<?> futureMeta) {
-		return EqualsBuilder.reflectionEquals(currentMeta, futureMeta, "hash");
+
+		if(currentMeta == null){
+			return futureMeta == null;
+		}
+		if(futureMeta == null){
+			return false;
+		}
+
+		return currentMeta.toString().equals(futureMeta.toString());
 	}
-	
+
 	@Override
 	public int totalChangedCount() {
 		return added.size() + removed.size() + modified.size();
@@ -100,7 +106,7 @@ public abstract class AbstractMetaComparator<T, C extends Enum<C>> implements Me
 	
 	@Override
 	public String toString() {
-		return String.format("added:%s, removed:%s, changed:%s", added, removed, modified);
+		return String.format("%s{added:%s, removed:%s, changed:%s}", idDesc(), added, removed, modified);
 	}
 
 }

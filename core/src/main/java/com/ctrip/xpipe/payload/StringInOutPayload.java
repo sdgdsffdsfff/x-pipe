@@ -1,13 +1,12 @@
 package com.ctrip.xpipe.payload;
 
+import com.ctrip.xpipe.api.codec.Codec;
+import io.netty.buffer.ByteBuf;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
 import java.nio.charset.Charset;
-
-import com.ctrip.xpipe.api.codec.Codec;
-
-import io.netty.buffer.ByteBuf;
 
 /**
  * @author wenchao.meng
@@ -44,4 +43,8 @@ public class StringInOutPayload extends AbstractInOutPayload{
 		return writableByteChannel.write(ByteBuffer.wrap(message.getBytes(charset)));
 	}
 
+	@Override
+	protected void doTruncate(int reduceLen) throws IOException {
+		throw new UnsupportedOperationException();
+	}
 }

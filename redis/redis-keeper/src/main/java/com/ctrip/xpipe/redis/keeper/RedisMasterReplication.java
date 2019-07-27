@@ -4,7 +4,6 @@ import com.ctrip.xpipe.api.lifecycle.Lifecycle;
 import com.ctrip.xpipe.api.server.PARTIAL_STATE;
 import com.ctrip.xpipe.exception.XpipeException;
 import com.ctrip.xpipe.redis.core.protocal.PsyncObserver;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 
@@ -22,5 +21,7 @@ public interface RedisMasterReplication extends PsyncObserver, Lifecycle{
 	void masterConnected(Channel channel);
 	
 	PARTIAL_STATE partialState();
+	
+	RedisMaster redisMaster();
 
 }

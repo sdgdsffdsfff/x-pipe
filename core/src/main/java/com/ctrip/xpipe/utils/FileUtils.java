@@ -1,14 +1,10 @@
 package com.ctrip.xpipe.utils;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.*;
+import java.net.URL;
 
 /**
  * @author wenchao.meng
@@ -17,8 +13,48 @@ import org.slf4j.LoggerFactory;
  */
 public class FileUtils {
 	
-	private static Logger logger = LoggerFactory.getLogger(FileUtils.class); 
+	private static Logger logger = LoggerFactory.getLogger(FileUtils.class);
 	
+	public static int DEFAULT_SHORT_PATH_LEVEL = 4;
+	
+	public static void recursiveDelete(File file) {
+		
+		if (!file.exists() || !file.canWrite()) {
+			return;
+		}
+		if (file.isDirectory()) {
+			File[] children = file.listFiles();
+			if (children != null && children.length > 0) {
+				for (File f : children) {
+					recursiveDelete(f);
+				}
+			}
+		}
+		logger.info("[recursiveDelete]{}", shortPath(file.getAbsolutePath(), DEFAULT_SHORT_PATH_LEVEL));
+		file.delete();
+	}
+
+	public static String shortPath(String absolutePath) {
+		return shortPath(absolutePath, DEFAULT_SHORT_PATH_LEVEL);
+	}
+
+	public static String shortPath(String absolutePath, int level) {
+		
+		int index = absolutePath.length();
+		for(int i=0;i<level;i++){
+			int currentIndex = absolutePath.lastIndexOf(File.separator, index - 1);
+			if(currentIndex < 0){
+				break;
+			}
+			index = currentIndex;
+		}
+		
+		if(index == absolutePath.length()){
+			return absolutePath;
+		}
+		return absolutePath.substring(index);
+	}
+
 	public static InputStream getFileInputStream(String fileName) throws FileNotFoundException{
 		
 		return getFileInputStream("./", fileName, FileUtils.class);
@@ -75,6 +111,14 @@ public class FileUtils {
 		}
 
 		throw new FileNotFoundException(path + ","  + fileName);
+	}
+	
+	public static String readFileAsString(String fileName) throws IOException{
+		
+		try(InputStream ins = getFileInputStream(fileName)){ 
+			String fileContent = IOUtil.toString(ins);
+			return fileContent;
+		}
 	}
 
 }

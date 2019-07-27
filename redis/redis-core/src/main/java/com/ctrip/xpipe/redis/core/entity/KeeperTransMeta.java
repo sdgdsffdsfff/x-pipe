@@ -1,7 +1,6 @@
 package com.ctrip.xpipe.redis.core.entity;
 
 
-import com.ctrip.xpipe.api.codec.Codec;
 import com.ctrip.xpipe.utils.ObjectUtils;
 
 /**
@@ -55,7 +54,8 @@ public class KeeperTransMeta implements ClusterAware{
 
 	@Override
 	public boolean equals(Object obj) {
-		if(obj == null){
+
+		if(!(obj instanceof KeeperTransMeta)){
 			return false;
 		}
 		
@@ -84,6 +84,6 @@ public class KeeperTransMeta implements ClusterAware{
 	
 	@Override
 	public String toString() {
-		return Codec.DEFAULT.encode(this);
+		return String.format("[%s,%s-%s:%d]", clusterId, shardId, keeperMeta.getIp(), keeperMeta.getPort());
 	}
 }

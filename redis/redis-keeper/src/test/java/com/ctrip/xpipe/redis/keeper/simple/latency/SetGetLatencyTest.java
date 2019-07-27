@@ -1,13 +1,12 @@
 package com.ctrip.xpipe.redis.keeper.simple.latency;
 
 
-import java.net.InetSocketAddress;
-import java.util.concurrent.TimeUnit;
-
 import com.ctrip.xpipe.api.monitor.DelayMonitor;
 import com.ctrip.xpipe.monitor.DefaultDelayMonitor;
-
 import redis.clients.jedis.Jedis;
+
+import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author wenchao.meng
@@ -44,7 +43,7 @@ public class SetGetLatencyTest extends AbstractLatencyTest{
 	
 	private void flushAll() {
 		
-		try(Jedis jedis = new Jedis(master.getHostName(), master.getPort())){
+		try(Jedis jedis = new Jedis(master.getHostString(), master.getPort())){
 			jedis.flushAll();
 		}
 	}
@@ -54,7 +53,7 @@ public class SetGetLatencyTest extends AbstractLatencyTest{
 		protected Jedis jedis;
 		
 		public AbstractMessage(InetSocketAddress dest) {
-			this.jedis = new Jedis(dest.getHostName(), dest.getPort());
+			this.jedis = new Jedis(dest.getHostString(), dest.getPort());
 		}
 
 		@Override

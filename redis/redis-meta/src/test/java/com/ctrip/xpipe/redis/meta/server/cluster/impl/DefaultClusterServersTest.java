@@ -1,14 +1,13 @@
 package com.ctrip.xpipe.redis.meta.server.cluster.impl;
 
 
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-
 import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerContextTest;
 import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServers;
 import com.ctrip.xpipe.redis.meta.server.cluster.CurrentClusterServer;
 import com.ctrip.xpipe.redis.meta.server.config.UnitTestServerConfig;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 
 
 /**
@@ -25,7 +24,7 @@ public class DefaultClusterServersTest extends AbstractMetaServerContextTest{
 		
 		initRegistry();
 		startRegistry();
-		sleep(100);
+		sleep(300);
 		
 		servers = (AbstractClusterServers<?>) getBean(ClusterServers.class);
 	}
@@ -36,12 +35,15 @@ public class DefaultClusterServersTest extends AbstractMetaServerContextTest{
 		CurrentClusterServer currentClusterServer = getCurrentClusterServer();
 
 		Assert.assertEquals(1, servers.allClusterServers().size());
+		
+		logger.info("[testRestart][stop]");
 		currentClusterServer.stop();
-		sleep(100);
+		sleep(300);
 		Assert.assertEquals(0, servers.allClusterServers().size());
 		
+		logger.info("[testRestart][start again]");
 		currentClusterServer.start();
-		sleep(100);
+		sleep(300);
 		Assert.assertEquals(1, servers.allClusterServers().size());
 	}
 

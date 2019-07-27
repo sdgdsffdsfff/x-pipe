@@ -1,30 +1,24 @@
 package com.ctrip.xpipe.redis.meta.server.cluster.impl;
 
 
-import java.util.HashSet;
-import java.util.Set;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.recipes.nodes.PersistentNode;
-import org.apache.zookeeper.CreateMode;
-import org.springframework.beans.factory.annotation.Autowired;
-
 import com.ctrip.xpipe.api.codec.Codec;
 import com.ctrip.xpipe.api.command.CommandFuture;
 import com.ctrip.xpipe.api.lifecycle.TopElement;
 import com.ctrip.xpipe.command.AbstractCommand;
 import com.ctrip.xpipe.redis.core.meta.MetaZkConfig;
-import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServerInfo;
-import com.ctrip.xpipe.redis.meta.server.cluster.CurrentClusterServer;
-import com.ctrip.xpipe.redis.meta.server.cluster.SLOT_STATE;
-import com.ctrip.xpipe.redis.meta.server.cluster.SlotInfo;
-import com.ctrip.xpipe.redis.meta.server.cluster.SlotManager;
+import com.ctrip.xpipe.redis.meta.server.cluster.*;
 import com.ctrip.xpipe.redis.meta.server.config.MetaServerConfig;
-import com.ctrip.xpipe.utils.XpipeThreadFactory;
+import com.ctrip.xpipe.spring.AbstractSpringConfigContext;
 import com.ctrip.xpipe.zk.ZkClient;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.recipes.nodes.PersistentNode;
+import org.apache.zookeeper.CreateMode;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import javax.annotation.Resource;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.Executor;
 
 /**
  * @author wenchao.meng
@@ -48,8 +42,9 @@ public class DefaultCurrentClusterServer extends AbstractClusterServer implement
 	private int currentServerId;
 	
 	private String serverPath;
-		
-	private ExecutorService executors;
+
+	@Resource(name = AbstractSpringConfigContext.GLOBAL_EXECUTOR)
+	private Executor executors;
 	
 	private PersistentNode persistentNode;
 	
@@ -60,19 +55,13 @@ public class DefaultCurrentClusterServer extends AbstractClusterServer implement
 	@Override
 	protected void doInitialize() throws Exception {
 
-		executors = Executors.newCachedThreadPool(XpipeThreadFactory.create("DEFAULT_CURRENT_CLUSTER_SERVER"));
-		
 		this.currentServerId = config.getMetaServerId();
 		serverPath = MetaZkConfig.getMetaServerRegisterPath() + "/" + currentServerId;
 		
 		setServerId(currentServerId);
 		setClusterServerInfo(new ClusterServerInfo(config.getMetaServerIp(), config.getMetaServerPort()));
-		
-		
 	}
 	
-
-
 	@Override
 	protected void doStart() throws Exception {
 		
@@ -90,14 +79,20 @@ public class DefaultCurrentClusterServer extends AbstractClusterServer implement
 
 	@Override
 	public int getOrder() {
-		return 0;
+		return ORDER;
 	}
 
 	@Override
 	protected void doStop() throws Exception {
 		persistentNode.close();
 	}
-	
+
+
+	@Override
+	protected void doDispose() throws Exception {
+		super.doDispose();
+	}
+
 	public void setZkClient(ZkClient zkClient) {
 		this.zkClient = zkClient;
 	}
@@ -125,7 +120,7 @@ public class DefaultCurrentClusterServer extends AbstractClusterServer implement
 	@Override
 	public CommandFuture<Void> exportSlot(int slotId) {
 
-		return new SlotExportCommand(slotId).execute();
+		return new SlotExportCommand(slotId).execute(executors);
 	}
 
 	@Override

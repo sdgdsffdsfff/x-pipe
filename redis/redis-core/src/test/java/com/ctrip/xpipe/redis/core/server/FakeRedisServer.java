@@ -1,15 +1,16 @@
 package com.ctrip.xpipe.redis.core.server;
 
-
-import java.util.LinkedList;
-import java.util.List;
-
 import com.ctrip.xpipe.AbstractTest;
 import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
 import com.ctrip.xpipe.redis.core.redis.RunidGenerator;
 import com.ctrip.xpipe.simpleserver.IoAction;
 import com.ctrip.xpipe.simpleserver.IoActionFactory;
 import com.ctrip.xpipe.simpleserver.Server;
+
+import java.net.Socket;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author wenchao.meng
@@ -29,7 +30,14 @@ public class FakeRedisServer extends AbstractLifecycle{
 	private int    rdbOffset = 1;
 	private Server server; 
 	private String runId = RunidGenerator.DEFAULT.generateRunid();
+	
+	private boolean eof = Boolean.parseBoolean(System.getProperty("EOF", "true"));  
+	
+	private int sleepBeforeSendFullSyncInfo = 0;
 	private int sleepBeforeSendRdb = 0;
+	private boolean sendLFBeforeSendRdb = true;
+	private AtomicInteger sendHalfRdbAndCloseConnectionCount = new AtomicInteger(0);
+	
 	private List<FakeRedisServerAction> commandListeners = new LinkedList<>();
 	
 	public FakeRedisServer(int port){
@@ -42,8 +50,8 @@ public class FakeRedisServer extends AbstractLifecycle{
 		this.server = new Server(port, new IoActionFactory() {
 			
 			@Override
-			public IoAction createIoAction() {
-				return new FakeRedisServerAction(FakeRedisServer.this);
+			public IoAction createIoAction(Socket socket) {
+				return new FakeRedisServerAction(FakeRedisServer.this, socket);
 			}
 		});
 	}
@@ -95,9 +103,11 @@ public class FakeRedisServer extends AbstractLifecycle{
 	public synchronized void reGenerateRdb() {
 
 		rdbOffset += commands.length();
-
-		rdbContent = AbstractTest.randomString(rdbSize);
-		String prefix = String.format("rdboffset:%d--", rdbOffset);
+		
+		String prefix = String.format("rdb_rdboffset:%d--", rdbOffset);
+		rdbContent = prefix + AbstractTest.randomString(rdbSize - prefix.length());
+		
+		prefix = String.format("cmd_rdboffset:%d--", rdbOffset);
 		commands = prefix + AbstractTest.randomString(commandsLength - prefix.length());
 		
 		addCommands(commands);
@@ -118,13 +128,13 @@ public class FakeRedisServer extends AbstractLifecycle{
 
 	public void addCommandsListener(FakeRedisServerAction fakeRedisServerAction) {
 		
-		logger.info("[addCommandsListener]{}", fakeRedisServerAction);
+		logger.debug("[addCommandsListener]{}", fakeRedisServerAction);
 		fakeRedisServerAction.addCommands(commands);
 		commandListeners.add(fakeRedisServerAction);
 	}
 
 
-	public Object currentCommands() {
+	public String currentCommands() {
 		return commands;
 	}
 	
@@ -141,7 +151,7 @@ public class FakeRedisServer extends AbstractLifecycle{
 	}
 
 	public void removeListener(FakeRedisServerAction fakeRedisServerAction) {
-		logger.info("[removeListener]{}", fakeRedisServerAction);
+		logger.debug("[removeListener]{}", fakeRedisServerAction);
 		commandListeners.remove(fakeRedisServerAction);
 	}
 	
@@ -152,6 +162,45 @@ public class FakeRedisServer extends AbstractLifecycle{
 		fakeRedisServer.initialize();
 		fakeRedisServer.start();
 	}
+	
+	public Server getServer() {
+		return server;
+	}
 
+	public int getConnected() {
+		return server.getConnected();
+	}
+
+	public int getSleepBeforeSendFullSyncInfo() {
+		return sleepBeforeSendFullSyncInfo;
+	}
+	
+	public void setSleepBeforeSendFullSyncInfo(int sleepBeforeSendFullSyncInfo) {
+		this.sleepBeforeSendFullSyncInfo = sleepBeforeSendFullSyncInfo;
+	}
+
+	public boolean isSendLFBeforeSendRdb() {
+		return sendLFBeforeSendRdb;
+	}
+
+	public void setSendLFBeforeSendRdb(boolean sendLFBeforeSendRdb) {
+		this.sendLFBeforeSendRdb = sendLFBeforeSendRdb;
+	}
+	
+	public void setSendHalfRdbAndCloseConnectionCount(int sendHalfRdbAndCloseConnectionCount) {
+		this.sendHalfRdbAndCloseConnectionCount.set(sendHalfRdbAndCloseConnectionCount);
+	}
+	
+	public int getAndDecreaseSendHalfRdbAndCloseConnectionCount() {
+		return sendHalfRdbAndCloseConnectionCount.getAndDecrement();
+	}
+	
+	public boolean isEof() {
+		return eof;
+	}
+	
+	public void setEof(boolean eof) {
+		this.eof = eof;
+	}
 }
 

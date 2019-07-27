@@ -1,22 +1,23 @@
 package com.ctrip.xpipe.redis.meta.server.rest.impl;
 
 
+import com.ctrip.xpipe.codec.JsonCodec;
+import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServerInfo;
+import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServers;
+import com.ctrip.xpipe.redis.meta.server.cluster.CurrentClusterServer;
+import com.ctrip.xpipe.redis.meta.server.cluster.SlotManager;
+import com.ctrip.xpipe.redis.meta.server.config.MetaServerConfig;
+import com.ctrip.xpipe.redis.meta.server.meta.CurrentMetaManager;
+import com.ctrip.xpipe.redis.meta.server.meta.DcMetaCache;
+import com.ctrip.xpipe.redis.meta.server.rest.ClusterApi;
+import com.ctrip.xpipe.redis.meta.server.rest.ClusterDebugInfo;
+import com.ctrip.xpipe.zk.ZkClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
-
-import com.ctrip.xpipe.codec.JsonCodec;
-import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServerInfo;
-import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServers;
-import com.ctrip.xpipe.redis.meta.server.cluster.CurrentClusterServer;
-import com.ctrip.xpipe.redis.meta.server.cluster.SlotManager;
-import com.ctrip.xpipe.redis.meta.server.meta.CurrentMetaManager;
-import com.ctrip.xpipe.redis.meta.server.rest.ClusterApi;
-import com.ctrip.xpipe.redis.meta.server.rest.ClusterDebugInfo;
-import com.ctrip.xpipe.zk.ZkClient;
 
 /**
  * @author wenchao.meng
@@ -29,6 +30,12 @@ public class DefaultClusterController implements ClusterApi{
 	
 	@Autowired
 	private CurrentClusterServer currentClusterServer;
+	
+	@Autowired
+	private MetaServerConfig metaServerConfig;
+	
+	@Autowired
+	private DcMetaCache dcMetaCache;
 	
 	@Autowired
 	private SlotManager slotManager;
@@ -92,7 +99,9 @@ public class DefaultClusterController implements ClusterApi{
 		JsonCodec pretty = new JsonCodec(true);
 		return pretty.encode(
 				new ClusterDebugInfo(currentClusterServer.getServerId(),
+						dcMetaCache.getCurrentDc(),
 						zkClient.getZkAddress(),
+						metaServerConfig.getZkNameSpace(),
 						currentClusterServer.isLeader(), 
 						currentClusterServer.getClusterInfo(), 
 						currentClusterServer.slots(),

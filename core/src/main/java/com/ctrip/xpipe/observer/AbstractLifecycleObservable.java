@@ -1,18 +1,18 @@
 package com.ctrip.xpipe.observer;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import org.slf4j.LoggerFactory;
-import org.slf4j.Logger;
-
 import com.ctrip.xpipe.api.lifecycle.Lifecycle;
 import com.ctrip.xpipe.api.observer.Observable;
 import com.ctrip.xpipe.api.observer.Observer;
 import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
-import com.ctrip.xpipe.utils.XpipeThreadFactory;
+import com.google.common.util.concurrent.MoreExecutors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @author wenchao.meng
@@ -22,34 +22,61 @@ import com.ctrip.xpipe.utils.XpipeThreadFactory;
 public abstract class AbstractLifecycleObservable extends AbstractLifecycle implements Observable, Lifecycle{
 	
 	protected Logger logger = LoggerFactory.getLogger(getClass());
+
+	private ReadWriteLock observersLock = new ReentrantReadWriteLock();
+	private List<Observer> observers = new ArrayList<>();
 	
-	private List<Observer> observers = new LinkedList<>();
+	private Executor executors = MoreExecutors.directExecutor();
+
 	
-	private ExecutorService executors = Executors.newCachedThreadPool(XpipeThreadFactory.create(this.getClass() + "-observable" ));
+	public AbstractLifecycleObservable() {
+	}
+
+	public AbstractLifecycleObservable(Executor executors) {
+		this.executors = executors;
+	}
 	
 	@Override
-	public synchronized void addObserver(Observer observer) {
-		
-		observers.add(observer);
+	public void addObserver(Observer observer) {
+
+		try{
+			observersLock.writeLock().lock();
+			observers.add(observer);
+		}finally {
+			observersLock.writeLock().unlock();
+		}
 		
 	}
 
 	public void removeObserver(Observer observer) {
-		
-		observers.remove(observer);
+
+		try {
+			observersLock.writeLock().lock();
+			observers.remove(observer);
+		}finally {
+			observersLock.writeLock().unlock();
+		}
 	}
-	
-	
+
+	public void setExecutors(Executor executors) {
+		this.executors = executors;
+	}
+
 	protected void notifyObservers(final Object arg){
 		
 		Object []tmpObservers;
-		
-		synchronized (observers) {
+
+		try {
+			observersLock.readLock().lock();
 			tmpObservers = observers.toArray();
+		}finally {
+			observersLock.readLock().unlock();
 		}
 		
 		for(final Object observer : tmpObservers){
-			
+
+				beginNotifyObserver(observer);
+
 				executors.execute(new Runnable() {
 					@Override
 					public void run() {
@@ -61,5 +88,8 @@ public abstract class AbstractLifecycleObservable extends AbstractLifecycle impl
 					}
 				});
 		}
+	}
+
+	protected void beginNotifyObserver(Object observer){
 	}
 }

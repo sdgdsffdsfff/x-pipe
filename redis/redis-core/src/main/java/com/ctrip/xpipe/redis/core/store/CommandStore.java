@@ -1,21 +1,22 @@
 package com.ctrip.xpipe.redis.core.store;
 
-import java.io.IOException;
-
+import com.ctrip.xpipe.api.lifecycle.Destroyable;
 import io.netty.buffer.ByteBuf;
 
-public interface CommandStore {
+import java.io.Closeable;
+import java.io.IOException;
+
+public interface CommandStore extends Closeable, Destroyable{
 
 	int appendCommands(ByteBuf byteBuf) throws IOException;
 
 	CommandReader beginRead(long startOffset) throws IOException;
 
 	boolean awaitCommandsOffset(long offset, int timeMilli) throws InterruptedException;
-
-	void close();
-	
 	
 	long totalLength();
+	
+	long lowestAvailableOffset();
 	
 	/**
 	 * The lowest offset(start from zero) among all CommandReader.
@@ -24,5 +25,7 @@ public interface CommandStore {
 	long lowestReadingOffset();
 	
 	void addCommandsListener(long offset, CommandsListener commandsListener) throws IOException;
+	
+	void gc();
 	
 }

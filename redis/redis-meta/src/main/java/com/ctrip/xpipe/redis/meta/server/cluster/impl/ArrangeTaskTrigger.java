@@ -1,26 +1,28 @@
 package com.ctrip.xpipe.redis.meta.server.cluster.impl;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
 import com.ctrip.xpipe.api.factory.ObjectFactory;
+import com.ctrip.xpipe.api.lifecycle.TopElement;
+import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
 import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServer;
 import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServers;
 import com.ctrip.xpipe.redis.meta.server.cluster.SlotManager;
 import com.ctrip.xpipe.redis.meta.server.cluster.task.ReshardingTask;
 import com.ctrip.xpipe.redis.meta.server.cluster.task.ServerBalanceResharding;
 import com.ctrip.xpipe.redis.meta.server.cluster.task.ServerDeadResharding;
+import com.ctrip.xpipe.spring.AbstractSpringConfigContext;
 import com.ctrip.xpipe.utils.MapUtils;
 import com.ctrip.xpipe.zk.ZkClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.Resource;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * if server restart, we dont want to do sharding twice
@@ -29,7 +31,7 @@ import com.ctrip.xpipe.zk.ZkClient;
  * Jul 27, 2016
  */
 @Component
-public class ArrangeTaskTrigger {
+public class ArrangeTaskTrigger extends AbstractLifecycle implements TopElement{
 	
 	private Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -46,11 +48,12 @@ public class ArrangeTaskTrigger {
 
 	@Autowired
 	private ArrangeTaskExecutor arrangeTaskExecutor;
+
+	@Resource(name = AbstractSpringConfigContext.SCHEDULED_EXECUTOR)
+	private ScheduledExecutorService scheduled;
 	
-	private ScheduledExecutorService scheduled = Executors.newScheduledThreadPool(1);
-	
-	private Map<ClusterServer, DeadServer> serverActions = new ConcurrentHashMap<>();  
-	
+	private Map<ClusterServer, DeadServer> serverActions = new ConcurrentHashMap<>();
+
 	public void initSharding(ReshardingTask task){
 		
 		arrangeTaskExecutor.offer(task);
@@ -61,6 +64,8 @@ public class ArrangeTaskTrigger {
 	}
 	
 	public void serverDead(final ClusterServer clusterServer){
+		
+		logger.info("[serverDead]{}", clusterServer);
 		
 		MapUtils.getOrCreate(serverActions, clusterServer, new ObjectFactory<DeadServer>() {
 
@@ -76,7 +81,8 @@ public class ArrangeTaskTrigger {
 	}
 
 	public void serverAlive(ClusterServer clusterServer){
-		
+
+		logger.info("[serverAlive]{}", clusterServer);
 		DeadServer deadServer = serverActions.get(clusterServer);
 		if(deadServer == null){
 			arrangeTaskExecutor.offer(new ServerBalanceResharding(slotManager, clusterServers, zkClient));
@@ -113,5 +119,12 @@ public class ArrangeTaskTrigger {
 	public void setWaitForRestartTimeMills(int waitForRestartTimeMills) {
 		this.waitForRestartTimeMills = waitForRestartTimeMills;
 	}
+	
+	public void setArrangeTaskExecutor(ArrangeTaskExecutor arrangeTaskExecutor) {
+		this.arrangeTaskExecutor = arrangeTaskExecutor;
+	}
 
+	public void setScheduled(ScheduledExecutorService scheduled) {
+		this.scheduled = scheduled;
+	}
 }

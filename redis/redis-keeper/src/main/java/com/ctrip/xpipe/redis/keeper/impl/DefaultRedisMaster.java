@@ -1,23 +1,22 @@
+
 package com.ctrip.xpipe.redis.keeper.impl;
-
-
-import java.io.IOException;
-import java.util.concurrent.ScheduledExecutorService;
-
 
 import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.api.server.PARTIAL_STATE;
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
-import com.ctrip.xpipe.exception.XpipeRuntimeException;
 import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
+import com.ctrip.xpipe.redis.core.protocal.MASTER_STATE;
+import com.ctrip.xpipe.redis.core.proxy.ProxyResourceManager;
 import com.ctrip.xpipe.redis.core.store.ReplicationStore;
 import com.ctrip.xpipe.redis.core.store.ReplicationStoreManager;
 import com.ctrip.xpipe.redis.keeper.RdbDumper;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.RedisMaster;
 import com.ctrip.xpipe.redis.keeper.RedisMasterReplication;
+import io.netty.channel.nio.NioEventLoopGroup;
 
-
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * @author wenchao.meng
  *
@@ -29,20 +28,32 @@ public class DefaultRedisMaster extends AbstractLifecycle implements RedisMaster
 
 	private ReplicationStoreManager replicationStoreManager;
 
-	private DefaultEndPoint endpoint;
+	private Endpoint endpoint;
+	
+	private AtomicBoolean isKeeper = new AtomicBoolean(false);
 	
 	private ScheduledExecutorService scheduled;
 	
+	private MASTER_STATE masterState = MASTER_STATE.REDIS_REPL_NONE;
+	
 	private RedisMasterReplication redisMasterReplication;
 
-	public DefaultRedisMaster(RedisKeeperServer redisKeeperServer, DefaultEndPoint endpoint, ReplicationStoreManager replicationStoreManager,
-			ScheduledExecutorService scheduled) {
+	private NioEventLoopGroup nioEventLoopGroup;
+
+	private ProxyResourceManager endpointManager;
+
+	public DefaultRedisMaster(RedisKeeperServer redisKeeperServer, DefaultEndPoint endpoint, NioEventLoopGroup nioEventLoopGroup,
+							  ReplicationStoreManager replicationStoreManager, ScheduledExecutorService scheduled,
+							  ProxyResourceManager proxyResourceManager) {
 
 		this.redisKeeperServer = redisKeeperServer;
 		this.replicationStoreManager = replicationStoreManager;
+		this.nioEventLoopGroup = nioEventLoopGroup;
 		this.endpoint = endpoint;
 		this.scheduled = scheduled;
-		redisMasterReplication = new DefaultRedisMasterReplication(this, this.redisKeeperServer, this.scheduled);
+		this.endpointManager = proxyResourceManager;
+		redisMasterReplication = new DefaultRedisMasterReplication(this, this.redisKeeperServer, nioEventLoopGroup,
+				this.scheduled, proxyResourceManager);
 	}
 	
 	@Override
@@ -78,13 +89,7 @@ public class DefaultRedisMaster extends AbstractLifecycle implements RedisMaster
 	@Override
 	public ReplicationStore getCurrentReplicationStore() {
 
-		try {
-			ReplicationStore replicationStore = replicationStoreManager.createIfNotExist();
-			return replicationStore;
-		} catch (IOException e) {
-			logger.error("[getCurrentReplicationStore]" + this, e);
-			throw new XpipeRuntimeException("[getCurrentReplicationStore]" + this, e);
-		}
+		return redisKeeperServer.getReplicationStore();
 	}
 
 
@@ -100,7 +105,43 @@ public class DefaultRedisMaster extends AbstractLifecycle implements RedisMaster
 
 	
 	@Override
-	public RdbDumper createRdbDumper() {
-		return new RedisMasterNewRdbDumper(this, redisKeeperServer);
+	public RdbDumper createRdbDumper() throws CreateRdbDumperException {
+		
+		if(masterState != MASTER_STATE.REDIS_REPL_CONNECTED){
+			logger.info("[createRdbDumper][master state not connected, dumper not allowed]{}", redisMasterReplication);
+			throw new CreateRdbDumperException(this, "master state not connected, dumper not allowed:" + masterState);
+		}
+		return new RedisMasterNewRdbDumper(this, redisKeeperServer, nioEventLoopGroup, scheduled, endpointManager);
+	}
+	
+	public MASTER_STATE getMasterState() {
+		return masterState;
+	}
+	
+	public void setMasterState(MASTER_STATE masterState) {
+		
+		logger.info("[setMasterState]{}, {}", this, masterState);
+		this.masterState = masterState;
+	}
+
+	@Override
+	public String metaInfo() {
+		return String.format("%s(%s:%d)", roleDesc(), masterEndPoint().getHost(), masterEndPoint().getPort());
+	}
+
+	@Override
+	public String toString() {
+		return String.format("%s", endpoint);
+	}
+
+	@Override
+	public boolean isKeeper() {
+		return isKeeper.get();
+	}
+
+	@Override
+	public void setKeeper() {
+		isKeeper.set(true);
+		logger.info("[setKeeper]{}", this);
 	}
 }

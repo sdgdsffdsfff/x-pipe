@@ -1,5 +1,9 @@
 package com.ctrip.xpipe.redis.core.store;
 
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+
+import java.io.File;
+
 /**
  * @author wenchao.meng
  *
@@ -7,14 +11,12 @@ package com.ctrip.xpipe.redis.core.store;
  */
 public interface DumpedRdbStore extends RdbStore{
 	
-	void setRdbFileSize(long rdbFileSize);
+	void setEofType(EofType eofType);
+		
+	EofType getEofType();
 	
-	void setMasterOffset(long masterOffset);
+	void setRdbOffset(long rdbLastOffset);
 	
-	long getRdbFileSize();
-	
-	long getMasterOffset();
-
-	void setRdbLastKeeperOffset(long rdbLastKeeperOffset);
+	File getRdbFile();
 
 }

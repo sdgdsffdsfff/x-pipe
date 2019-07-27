@@ -1,15 +1,14 @@
 package com.ctrip.xpipe.redis.meta.server.cluster.task;
 
 
-import org.apache.curator.framework.CuratorFramework;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.ctrip.xpipe.command.AbstractCommand;
 import com.ctrip.xpipe.redis.core.meta.MetaZkConfig;
 import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServer;
 import com.ctrip.xpipe.redis.meta.server.cluster.SlotInfo;
 import com.ctrip.xpipe.zk.ZkClient;
+import org.apache.curator.framework.CuratorFramework;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author wenchao.meng
@@ -40,13 +39,17 @@ public abstract class AbstractSlotMoveTask extends AbstractCommand<Void> impleme
 		return from;
 	}
 
-	protected void setSlotInfo(SlotInfo slotInfo) throws Exception {
+	protected void setSlotInfo(SlotInfo slotInfo) throws ShardingException {
 		
 		CuratorFramework client = zkClient.get();
 
 		String path = getSlotZkPath();
-		client.createContainers(path);
-		client.setData().forPath(path, slotInfo.encode());
+		try {
+			client.createContainers(path);
+			client.setData().forPath(path, slotInfo.encode());
+		} catch (Exception e) {
+			throw new ShardingException(String.format("path:%s, slotInfo:%s", path, slotInfo), e);
+		}
 	}
 
 	
@@ -66,7 +69,12 @@ public abstract class AbstractSlotMoveTask extends AbstractCommand<Void> impleme
 
 	@Override
 	public String toString() {
-		return String.format("(%s)slot:%d, %s->%s", getClass().getSimpleName(), slot, from == null? "null" : from.getServerId(), to.getServerId());
+		return String.format("(%s)slot:%d, %s->%s", getClass().getSimpleName(), slot, from == null? "null" : from.getServerId(), to == null ? null: to.getServerId());
 	}
 
+	
+	@Override
+	public String getName() {
+		return getClass().getSimpleName();
+	}
 }

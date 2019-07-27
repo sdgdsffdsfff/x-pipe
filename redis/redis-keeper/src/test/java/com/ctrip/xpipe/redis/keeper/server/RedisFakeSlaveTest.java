@@ -1,21 +1,20 @@
 package com.ctrip.xpipe.redis.keeper.server;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.concurrent.TimeUnit;
-
-import org.junit.After;
-import org.junit.Test;
-
 import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
 import com.ctrip.xpipe.redis.keeper.AbstractRedisKeeperTest;
 import com.ctrip.xpipe.simpleserver.IoAction;
 import com.ctrip.xpipe.simpleserver.IoActionFactory;
 import com.ctrip.xpipe.simpleserver.Server;
+import org.junit.After;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.net.UnknownHostException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author wenchao.meng
@@ -48,8 +47,8 @@ public class RedisFakeSlaveTest extends AbstractRedisKeeperTest{
 		new Server(fakeSlavePort, new IoActionFactory() {
 			
 			@Override
-			public IoAction createIoAction() {
-				return new AbstractRedisSlaveAction() {
+			public IoAction createIoAction(Socket socket) {
+				return new AbstractRedisSlaveAction(socket) {
 					
 					@Override
 					protected String getInfo() {
@@ -88,7 +87,7 @@ public class RedisFakeSlaveTest extends AbstractRedisKeeperTest{
 			readLine(ins);
 			
 			
-			scheduler.scheduleAtFixedRate(new Runnable(){
+			scheduled.scheduleAtFixedRate(new Runnable(){
 	
 				@Override
 				public void run() {

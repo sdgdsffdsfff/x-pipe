@@ -1,7 +1,5 @@
 package com.ctrip.xpipe.redis.core.protocal.cmd;
 
-
-
 import com.alibaba.fastjson.JSON;
 import com.ctrip.xpipe.api.codec.Codec;
 import com.ctrip.xpipe.api.pool.SimpleObjectPool;
@@ -11,8 +9,9 @@ import com.ctrip.xpipe.payload.ByteArrayOutputStreamPayload;
 import com.ctrip.xpipe.redis.core.protocal.RedisProtocol;
 import com.ctrip.xpipe.redis.core.protocal.protocal.RequestStringParser;
 import com.ctrip.xpipe.redis.core.store.ReplicationStoreMeta;
-
 import io.netty.buffer.ByteBuf;
+
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author marsqing
@@ -22,12 +21,12 @@ import io.netty.buffer.ByteBuf;
 public class KinfoCommand extends AbstractRedisCommand<ReplicationStoreMeta> {
 
 	private String args;
-	public KinfoCommand(SimpleObjectPool<NettyClient> clientPool) {
-		this(clientPool, "");
+	public KinfoCommand(SimpleObjectPool<NettyClient> clientPool, ScheduledExecutorService scheduled) {
+		this(clientPool, "", scheduled);
 	}
 
-	public KinfoCommand(SimpleObjectPool<NettyClient> clientPool, String args) {
-		super(clientPool);
+	public KinfoCommand(SimpleObjectPool<NettyClient> clientPool, String args, ScheduledExecutorService scheduled) {
+		super(clientPool, scheduled);
 		this.args = args;
 	}
 
@@ -37,7 +36,7 @@ public class KinfoCommand extends AbstractRedisCommand<ReplicationStoreMeta> {
 	}
 
 	@Override
-	protected ByteBuf getRequest() {
+	public ByteBuf getRequest() {
 		
 		RequestStringParser requestString = new RequestStringParser(getName(), args);
 		return requestString.format();
@@ -65,7 +64,7 @@ public class KinfoCommand extends AbstractRedisCommand<ReplicationStoreMeta> {
 		if(meta == null){
 			return false;
 		}
-		if(meta.getMasterRunid() == null || meta.getMasterRunid().length() != RedisProtocol.RUN_ID_LENGTH){
+		if(meta.getReplId() == null || meta.getReplId().length() != RedisProtocol.RUN_ID_LENGTH){
 			return false;
 		}
 		if(meta.getBeginOffset() == null){

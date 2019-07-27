@@ -1,18 +1,19 @@
 package com.ctrip.xpipe.redis.meta.server.meta;
 
-import java.net.InetSocketAddress;
-import java.util.List;
-
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-
+import com.ctrip.xpipe.api.lifecycle.Releasable;
 import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
 import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
 import com.ctrip.xpipe.redis.core.entity.ShardMeta;
 import com.ctrip.xpipe.redis.core.meta.MetaClone;
 import com.ctrip.xpipe.redis.core.meta.comparator.ClusterMetaComparator;
 import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerTest;
+import com.ctrip.xpipe.tuple.Pair;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author wenchao.meng
@@ -25,6 +26,7 @@ public class CurrentMetaTest extends AbstractMetaServerTest{
 	private CurrentMeta currentMeta;
 	
 	private String clusterId, shardId;
+	private AtomicInteger releaseCount = new AtomicInteger();
 	
 	@Before
 	public void beforeCurrentMetaTest(){
@@ -38,14 +40,77 @@ public class CurrentMetaTest extends AbstractMetaServerTest{
 	
 	
 	@Test
+	public void testGetKeeperMaster(){
+		
+		Pair<String, Integer> keeperMaster = new Pair<>("localhost", 6379);
+		currentMeta.setKeeperMaster(clusterId, shardId, keeperMaster);
+		
+		Pair<String, Integer> gotMaster = currentMeta.getKeeperMaster(clusterId, shardId);
+		Assert.assertEquals(keeperMaster, gotMaster);
+		Assert.assertTrue(keeperMaster != gotMaster);
+		
+		
+		keeperMaster.setKey("127.0.0.2");
+		gotMaster = currentMeta.getKeeperMaster(clusterId, shardId);
+		Assert.assertNotEquals(keeperMaster, gotMaster);
+		Assert.assertTrue(keeperMaster != gotMaster);
+	}
+	
+	@Test
+	public void testDefaultMaster(){
+		
+		CurrentMeta currentMeta = new CurrentMeta();
+		String clusterId = getClusterId(), shardId = getShardId();
+		String activeDc = getDcMeta(getDc()).getClusters().get(clusterId).getActiveDc();
+				
+		for(String dc : getDcs()){
+			
+			ClusterMeta clusterMeta = getDcMeta(dc).getClusters().get(clusterId); 
+			currentMeta.addCluster(clusterMeta);
+			Pair<String, Integer> keeperMaster = currentMeta.getKeeperMaster(clusterId, shardId);
+			
+			logger.info("[testDefaultMaster]{},{},{}-{}", dc, clusterId, shardId, keeperMaster);
+			if(dc.equals(activeDc)){
+				Assert.assertEquals(new Pair<String, Integer>("127.0.0.1", 6379), keeperMaster);
+			}else{
+				Assert.assertEquals(null, keeperMaster);
+			}
+		}
+		
+	}
+	
+	@Test
+	public void testRelease(){
+		
+		currentMeta.addResource(clusterId, shardId, new Releasable() {
+			
+			@Override
+			public void release() throws Exception {
+				releaseCount.incrementAndGet();
+			}
+		});
+		
+		currentMeta.removeCluster(clusterId);
+		Assert.assertEquals(1, releaseCount.get());
+		
+	}
+	
+	
+	@Test
 	public void testToString(){
 		
 		List<KeeperMeta> allKeepers = getDcKeepers(getDc(), clusterId, shardId);
 		
 		currentMeta.setSurviveKeepers(clusterId, shardId, allKeepers, allKeepers.get(0));
+		currentMeta.addResource(clusterId, shardId, new Releasable() {
+			
+			@Override
+			public void release() throws Exception {
+				
+			}
+		});
 		
 		String json = currentMeta.toString();
-		logger.info("[testToString]{}", json);
 		CurrentMeta de = CurrentMeta.fromJson(json);
 		Assert.assertEquals(json, de.toString());
 		
@@ -75,7 +140,7 @@ public class CurrentMetaTest extends AbstractMetaServerTest{
 		boolean result = currentMeta.setKeeperActive(clusterId, shardId, keeperMeta);
 		Assert.assertTrue(result);
 		keeperMeta.setActive(true);
-		Assert.assertEquals(keeperMeta, currentMeta.getKeeperActive(clusterId, shardId));;
+		Assert.assertEquals(keeperMeta, currentMeta.getKeeperActive(clusterId, shardId));
 		Assert.assertFalse(currentMeta.setKeeperActive(clusterId, shardId, keeperMeta));
 		
 		//set keeper active not exist
@@ -88,10 +153,10 @@ public class CurrentMetaTest extends AbstractMetaServerTest{
 		}
 		
 
-		Assert.assertEquals(new InetSocketAddress("127.0.0.1", 6379), currentMeta.getKeeperMaster(clusterId, shardId));
-		InetSocketAddress keeperMaster = new InetSocketAddress("localhost", randomPort());
+		Assert.assertEquals(new Pair<String, Integer>("127.0.0.1", 6379), currentMeta.getKeeperMaster(clusterId, shardId));
+		Pair<String, Integer> keeperMaster = new Pair<String, Integer>("localhost", randomPort());
 		currentMeta.setKeeperMaster(clusterId, shardId, keeperMaster);
-		Assert.assertEquals(keeperMaster, currentMeta.getKeeperMaster(clusterId, shardId));;
+		Assert.assertEquals(keeperMaster, currentMeta.getKeeperMaster(clusterId, shardId));
 
 		
 		
@@ -109,7 +174,6 @@ public class CurrentMetaTest extends AbstractMetaServerTest{
 		comparator.compare();
 		
 		currentMeta.changeCluster(comparator);
-		logger.info("[testChange]{}", currentMeta);
 		Assert.assertFalse(currentMeta.hasShard(clusterId, shardId));
 		Assert.assertTrue(currentMeta.hasShard(clusterId, newShardId));
 	}

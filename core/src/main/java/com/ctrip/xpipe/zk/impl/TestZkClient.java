@@ -1,15 +1,11 @@
 package com.ctrip.xpipe.zk.impl;
 
-
-
-
-import org.apache.curator.framework.CuratorFramework;
-
 import com.ctrip.xpipe.api.lifecycle.Ordered;
 import com.ctrip.xpipe.api.lifecycle.TopElement;
 import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
 import com.ctrip.xpipe.zk.ZkClient;
 import com.ctrip.xpipe.zk.ZkConfig;
+import org.apache.curator.framework.CuratorFramework;
 
 /**
  * @author marsqing
@@ -35,10 +31,8 @@ public class TestZkClient extends AbstractLifecycle implements ZkClient, TopElem
 		
 	}
 
-	
 	@Override
-	protected void doDispose() throws Exception {
-		super.doDispose();
+	protected void doStop() throws Exception {
 		if(client != null){
 			client.close();
 			client = null;
@@ -46,12 +40,13 @@ public class TestZkClient extends AbstractLifecycle implements ZkClient, TopElem
 	}
 	
 	@Override
-	protected void doStop() throws Exception {
-	}
-	
-	@Override
 	public synchronized CuratorFramework get() {
 		
+		if(!getLifecycleState().isStarted()){
+			logger.info("[get][not startted, return null]");
+			return null;
+		}
+				
 		if(client != null){
 			return client;
 		}
@@ -85,6 +80,6 @@ public class TestZkClient extends AbstractLifecycle implements ZkClient, TopElem
 	
 	@Override
 	public int getOrder() {
-		return Ordered.HIGHEST_PRECEDENCE;
+		return Ordered.HIGHEST_PRECEDENCE + 1;
 	}
 }

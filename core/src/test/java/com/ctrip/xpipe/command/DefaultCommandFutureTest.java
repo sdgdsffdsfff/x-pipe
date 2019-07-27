@@ -1,15 +1,14 @@
 package com.ctrip.xpipe.command;
 
 
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-
+import com.ctrip.xpipe.AbstractTest;
+import com.ctrip.xpipe.api.command.CommandFuture;
 import org.junit.Assert;
 import org.junit.Test;
 
-import com.ctrip.xpipe.AbstractTest;
-import com.ctrip.xpipe.api.command.CommandFuture;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -20,6 +19,18 @@ import com.ctrip.xpipe.api.command.CommandFuture;
 public class DefaultCommandFutureTest extends AbstractTest{
 	
 	CommandFuture<Object> jobFuture = new DefaultCommandFuture<>(null);
+
+	@Test
+	public void testToString(){
+
+		jobFuture.setSuccess();
+		logger.info("{}", jobFuture);
+
+		jobFuture = new DefaultCommandFuture<>(null);
+		jobFuture.setFailure(new Exception("some exception"));
+		logger.info("{}", jobFuture);
+
+	}
 	
 	@Test
 	public void testSuccess() throws InterruptedException, ExecutionException{

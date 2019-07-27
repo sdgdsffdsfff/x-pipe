@@ -1,16 +1,14 @@
 package com.ctrip.xpipe.redis.core.protocal.cmd;
 
-
-import java.io.IOException;
-
 import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.api.pool.SimpleObjectPool;
 import com.ctrip.xpipe.exception.XpipeRuntimeException;
 import com.ctrip.xpipe.netty.commands.NettyClient;
 import com.ctrip.xpipe.redis.core.store.ReplicationStore;
 import com.ctrip.xpipe.redis.core.store.ReplicationStoreManager;
-import com.ctrip.xpipe.redis.core.store.ReplicationStoreMeta;
 
+import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author wenchao.meng
@@ -25,15 +23,15 @@ public class DefaultPsync extends AbstractReplicationStorePsync{
 	
 	
 	public DefaultPsync(SimpleObjectPool<NettyClient> clientPool, 
-			Endpoint masterEndPoint, ReplicationStoreManager replicationStoreManager) {
-		super(clientPool, true);
+			Endpoint masterEndPoint, ReplicationStoreManager replicationStoreManager, ScheduledExecutorService scheduled) {
+		super(clientPool, true, scheduled);
 		this.masterEndPoint = masterEndPoint;
 		this.replicationStoreManager = replicationStoreManager;
 		currentReplicationStore = getCurrentReplicationStore();
 	}
 	
 	@Override		
-	protected ReplicationStore getCurrentReplicationStore() {
+	protected final ReplicationStore getCurrentReplicationStore() {
 		
 		try {
 			return replicationStoreManager.createIfNotExist();
@@ -50,29 +48,26 @@ public class DefaultPsync extends AbstractReplicationStorePsync{
 	}
 	
 	@Override
-	protected void doWhenFullSyncToNonFreshReplicationStore(String masterRunid) throws IOException {
+	protected void doWhenFullSyncToNonFreshReplicationStore(String replId) throws IOException {
 		
 		ReplicationStore oldStore = currentReplicationStore;
-		long newKeeperBeginOffset = ReplicationStoreMeta.DEFAULT_KEEPER_BEGIN_OFFSET;
 		if(oldStore != null){
 			try {
 				logger.info("[doWhenFullSyncToNonFreshReplicationStore][full sync][replication store out of time, destroy]{}, {}", this, currentReplicationStore);
 				oldStore.close();
-			} catch (IOException e) {
+			} catch (Exception e) {
 				logger.error("[handleRedisReponse]" + oldStore, e);
 			}
-			newKeeperBeginOffset = oldStore.nextNonOverlappingKeeperBeginOffset();
-			oldStore.delete();
 			notifyReFullSync();
 		}
-		logger.info("[doWhenFullSyncToNonFreshReplicationStore][set keepermeta]{}, {}", masterRunid, newKeeperBeginOffset);
-		currentReplicationStore = createReplicationStore(masterRunid, newKeeperBeginOffset);
+		logger.info("[doWhenFullSyncToNonFreshReplicationStore][set keepermeta]{}", replId);
+		currentReplicationStore = createReplicationStore();
 	}
 	
-	private ReplicationStore createReplicationStore(String masterRunid, long keeperBeginOffset) {
+	private ReplicationStore createReplicationStore() {
 		
 		try {
-			return replicationStoreManager.create(masterRunid, keeperBeginOffset);
+			return replicationStoreManager.create();
 		} catch (IOException e) {
 			throw new XpipeRuntimeException("[createNewReplicationStore]" + replicationStoreManager, e);
 		}

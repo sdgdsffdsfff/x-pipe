@@ -2,6 +2,7 @@ package com.ctrip.xpipe.redis.console.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author shyin
@@ -11,19 +12,22 @@ import java.util.List;
 public class ShardModel implements java.io.Serializable{
 	private static final long serialVersionUID = 1L;
 	
-	private String m_id;
-	private String m_upstream;
+	private ShardTbl shardTbl;
 	
 	private List<RedisTbl> m_keepers = new ArrayList<RedisTbl>();
 	private List<RedisTbl> m_redises = new ArrayList<RedisTbl>();
 	
+	/** for creation **/
+	private Map<Long, SetinelTbl> sentinels;
+	
 	public ShardModel(){
 	}
-	
-	public ShardModel(String id) {
-		m_id = id;
+
+	public ShardModel(List<RedisTbl> m_redises){
+		this.m_redises = m_redises;
 	}
-	
+
+
 	public ShardModel addKeeper(RedisTbl keeper) {
 		m_keepers.add(keeper);
 		return this;
@@ -34,10 +38,6 @@ public class ShardModel implements java.io.Serializable{
 		return this;
 	}
 	
-	public String getId() {
-		return m_id;
-	}
-	
 	public List<RedisTbl> getKeepers() {
 		return m_keepers;
 	}
@@ -46,17 +46,24 @@ public class ShardModel implements java.io.Serializable{
 		return m_redises;
 	}
 	
-	public String getUpstream() {
-		return m_upstream;
+	public ShardTbl getShardTbl() {
+		return this.shardTbl;
 	}
 	
-	public ShardModel setId(String id) {
-		m_id = id;
-		return this;
+	public void setShardTbl(ShardTbl shardTbl) {
+		this.shardTbl = shardTbl;
 	}
 	
-	public ShardModel setUpstream(String upstream) {
-		m_upstream = upstream;
-		return this;
+	public Map<Long, SetinelTbl> getSentinels() {
+		return this.sentinels;
+	}
+	
+	public void setSentinels(Map<Long, SetinelTbl> sentinels) {
+		this.sentinels = sentinels;
+	}
+
+	@Override
+	public String toString() {
+		return String.format("shard:%s, keepers:%s, redises:%s", shardTbl, m_keepers, m_redises);
 	}
 }

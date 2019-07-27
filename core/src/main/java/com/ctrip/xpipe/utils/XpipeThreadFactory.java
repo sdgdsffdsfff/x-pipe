@@ -1,14 +1,15 @@
 package com.ctrip.xpipe.utils;
 
+import com.ctrip.xpipe.spring.AbstractProfile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * @author Leo Liang(jhliang@ctrip.com)
@@ -17,24 +18,35 @@ import org.slf4j.LoggerFactory;
 public class XpipeThreadFactory implements ThreadFactory {
 	private static Logger logger = LoggerFactory.getLogger(XpipeThreadFactory.class);
 
-	private final AtomicLong m_threadNumber = new AtomicLong(1);
+	protected final AtomicLong m_threadNumber = new AtomicLong(1);
+	
+	public static final int RANDOM_STRING_LEN = 5;
 
-	private final String m_namePrefix;
+	protected final String m_namePrefix;
 
-	private final boolean m_daemon;
+	protected final boolean m_daemon;
 
 	private final static ThreadGroup m_threadGroup = new ThreadGroup("Xpipe");
 
 	public static ThreadGroup getThreadGroup() {
+		
 		return m_threadGroup;
 	}
 
 	public static ThreadFactory create(String namePrefix) {
-		return new XpipeThreadFactory(namePrefix, false);
+		return create(namePrefix, false);
 	}
 
 	public static ThreadFactory create(String namePrefix, boolean daemon) {
-		return new XpipeThreadFactory(namePrefix, daemon);
+		return new XpipeThreadFactory(getThreadName(namePrefix), daemon);
+	}
+
+	private static String getThreadName(String namePrefix) {
+		
+		if(AbstractProfile.PROFILE_NAME_TEST.equals(System.getProperty(AbstractProfile.PROFILE_KEY))){
+			return namePrefix + "-" + StringUtil.randomString(RANDOM_STRING_LEN); 
+		}
+		return namePrefix;
 	}
 
 	public static boolean waitAllShutdown(int timeoutInMillis) {
@@ -83,14 +95,14 @@ public class XpipeThreadFactory implements ThreadFactory {
 		des.addAll(s);
 	}
 
-	private XpipeThreadFactory(String namePrefix, boolean daemon) {
+	protected XpipeThreadFactory(String namePrefix, boolean daemon) {
 		m_namePrefix = namePrefix;
 		m_daemon = daemon;
 	}
 
 	public Thread newThread(Runnable r) {
 		Thread t = new Thread(m_threadGroup, r,//
-		      m_threadGroup.getName() + "-" + m_namePrefix + "-" + m_threadNumber.getAndIncrement());
+		      m_namePrefix + "-" + m_threadNumber.getAndIncrement());
 		t.setDaemon(m_daemon);
 		if (t.getPriority() != Thread.NORM_PRIORITY)
 			t.setPriority(Thread.NORM_PRIORITY);

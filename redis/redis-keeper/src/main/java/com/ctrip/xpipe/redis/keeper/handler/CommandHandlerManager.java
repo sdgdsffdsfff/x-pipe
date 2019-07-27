@@ -1,14 +1,14 @@
 package com.ctrip.xpipe.redis.keeper.handler;
 
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 import com.ctrip.xpipe.redis.core.protocal.protocal.RedisErrorParser;
 import com.ctrip.xpipe.redis.keeper.CommandHandler;
 import com.ctrip.xpipe.redis.keeper.RedisClient;
 import com.ctrip.xpipe.utils.StringUtil;
+
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 /**
@@ -34,6 +34,11 @@ public class CommandHandlerManager extends AbstractCommandHandler{
 		putHandler(new SlaveOfCommandHandler());
 		putHandler(new KinfoCommandHandler());
 		putHandler(new KeeperCommandHandler());
+		putHandler(new PublishCommandHandler());
+		putHandler(new SubscribeCommandHandler());
+		putHandler(new ClientCommandHandler());
+		putHandler(new RoleCommandHandler());
+		putHandler(new ProxyCommandHandler());
 	}
 
 	private void putHandler(CommandHandler handler) {
@@ -43,7 +48,7 @@ public class CommandHandlerManager extends AbstractCommandHandler{
 			handlers.put(commandName.toLowerCase(), handler);
 		}
 	}
-	
+
 	@Override
 	public String[] getCommands() {		
 		return handlers.keySet().toArray(new String[handlers.size()]);
@@ -52,37 +57,43 @@ public class CommandHandlerManager extends AbstractCommandHandler{
 	@Override
 	protected void doHandle(final String[] args, final RedisClient redisClient) {
 		if (args.length == 0) {
-			logger.error("[doHandle][arg length]" + redisClient);
+			logger.error("[doHandle][arg length]{}", redisClient);
 			return;
 		}
 
-		final CommandHandler handler = handlers.get(args[0].toLowerCase());
-		if (handler == null) {
-			logger.error("[doHandler][no handler found]" + StringUtil.join(" ", args));
-			redisClient.sendMessage(new RedisErrorParser("unsupported command:" + args[0]).format());
-			return;
-		}
 
-		redisClient.processCommandSequentially(new Runnable() {
+		redisClient.getRedisKeeperServer().processCommandSequentially(new Runnable() {
 
 			@Override
 			public void run() {
 				try {
+					CommandHandler handler = handlers.get(args[0].toLowerCase());
+					if (handler == null) {
+						logger.error("[doHandler][no handler found]{}, {}", redisClient, StringUtil.join(" ", args));
+						redisClient.sendMessage(new RedisErrorParser("unsupported command:" + args[0]).format());
+						return;
+					}
 					innerDoHandle(args, redisClient, handler);
 				} catch (Exception e) {
 					logger.error("Error process command {} for client {}", Arrays.asList(args), redisClient, e);
-					redisClient.sendMessage(new RedisErrorParser("error:" + e.getMessage()).format());
+					redisClient.sendMessage(new RedisErrorParser(e.getMessage()).format());
 				}
 			}
 
+			@Override
+			public String toString() {
+				return String.format("%s, %s", redisClient, StringUtil.join(" ", args));
+			}
 		});
 	}
 	
-	private void innerDoHandle(String[] args, RedisClient redisClient, CommandHandler handler) {
+	private void innerDoHandle(String[] args, RedisClient redisClient, CommandHandler handler) throws Exception {
 		String[] newArgs = new String[args.length - 1];
 		System.arraycopy(args, 1, newArgs, 0, args.length - 1);
 		if(handler.isLog(newArgs)){
 			logger.info("[doHandle]{},{}", redisClient, StringUtil.join(" ", args));
+		}else{
+			logger.debug("[doHandle]{},{}", redisClient, StringUtil.join(" ", args));
 		}
 		handler.handle(newArgs, redisClient);
 	}

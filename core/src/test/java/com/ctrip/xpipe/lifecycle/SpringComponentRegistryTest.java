@@ -1,19 +1,17 @@
 package com.ctrip.xpipe.lifecycle;
 
-import java.util.Map;
-
-import org.junit.Assert;
-import org.junit.Test;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
 import com.ctrip.xpipe.AbstractTest;
 import com.ctrip.xpipe.api.lifecycle.ComponentRegistry;
 import com.ctrip.xpipe.api.lifecycle.Lifecycle;
 import com.ctrip.xpipe.api.lifecycle.TopElement;
-import com.ctrip.xpipe.lifecycle.SpringComponentRegistry;
+import org.junit.Assert;
+import org.junit.Test;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.Map;
 
 /**
  * @author wenchao.meng
@@ -26,7 +24,7 @@ public class SpringComponentRegistryTest extends AbstractTest{
 	@Test
 	public void test() throws Exception{
 		
-		ApplicationContext applicationContext = new AnnotationConfigApplicationContext(TestFactory.class);
+		ConfigurableApplicationContext applicationContext = new AnnotationConfigApplicationContext(TestFactory.class);
 		
 		ComponentRegistry componentRegistry = new SpringComponentRegistry(applicationContext);
 

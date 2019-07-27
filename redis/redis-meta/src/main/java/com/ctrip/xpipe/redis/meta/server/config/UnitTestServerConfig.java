@@ -1,7 +1,14 @@
 package com.ctrip.xpipe.redis.meta.server.config;
 
 import com.ctrip.xpipe.api.codec.Codec;
+import com.ctrip.xpipe.api.foundation.FoundationService;
+import com.ctrip.xpipe.redis.core.meta.DcInfo;
 import com.ctrip.xpipe.utils.IpUtils;
+import com.ctrip.xpipe.zk.ZkConfig;
+import com.google.common.collect.Maps;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author wenchao.meng
@@ -12,11 +19,15 @@ public class UnitTestServerConfig implements MetaServerConfig{
 
 	private String zkAddress = "localhost:2181";
 
-	private String consoleAddress = "http://localhost:8080";
+	private String consoleAddress = "http://localhost:9000";
+	
+	private String zkNameSpace = ZkConfig.DEFAULT_ZK_NAMESPACE;
 
 	private int metaServerId = 1;
 	
 	private int metaServerPort = 9747;
+
+	private int waitforOffsetMilli = 1000;
 	
 	public UnitTestServerConfig(){
 		
@@ -54,7 +65,7 @@ public class UnitTestServerConfig implements MetaServerConfig{
 
 	@Override
 	public String getMetaServerIp() {
-		return IpUtils.getFistNonLocalIpv4ServerAddress().getHostName();
+		return IpUtils.getFistNonLocalIpv4ServerAddress().getHostAddress();
 	}
 
 
@@ -88,5 +99,41 @@ public class UnitTestServerConfig implements MetaServerConfig{
 	@Override
 	public String toString() {
 		return Codec.DEFAULT.encode(this);
+	}
+
+	@Override
+	public String getZkNameSpace() {
+		return zkNameSpace;
+	}
+	
+	public void setZkNameSpace(String zkNameSpace) {
+		this.zkNameSpace = zkNameSpace;
+	}
+
+	@Override
+	public Map<String, DcInfo> getDcInofs() {
+		Map<String, DcInfo> result = Maps.newHashMap();
+		result.put(FoundationService.DEFAULT.getDataCenter(), new DcInfo("http://localhost:" + metaServerPort));
+		return result;
+	}
+
+	@Override
+	public int getWaitforOffsetMilli() {
+		return waitforOffsetMilli;
+	}
+
+	@Override
+	public boolean validateDomain() {
+		return true;
+	}
+
+	@Override
+	public int getKeeperInfoCheckInterval() {
+		return 1;
+	}
+
+	public UnitTestServerConfig setWaitforOffsetMilli(int waitforOffsetMilli) {
+		this.waitforOffsetMilli = waitforOffsetMilli;
+		return this;
 	}
 }

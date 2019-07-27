@@ -1,9 +1,9 @@
 package com.ctrip.xpipe.redis.core.store;
 
-import java.io.IOException;
-
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
-import com.ctrip.xpipe.redis.core.meta.KeeperState;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+
+import java.io.IOException;
 
 /**
  * @author marsqing
@@ -12,7 +12,19 @@ import com.ctrip.xpipe.redis.core.meta.KeeperState;
  */
 public interface MetaStore {
 
-	String getMasterRunid();
+	public static final String META_FILE = "meta.json";
+	
+	public static final String METHOD_BECOME_ACTIVE = "becomeActive";
+	
+	public static final String METHOD_BECOME_BACKUP = "becomeBackup";
+
+	String getReplId();
+	
+	String getReplId2();
+	
+	Long getSecondReplIdOffset();
+	
+	ReplicationStoreMeta shiftReplicationId(String newReplId, Long currentOffset) throws IOException;
 	
 	/**
 	 * the first byte offset,
@@ -25,47 +37,33 @@ public interface MetaStore {
 	
 	DefaultEndPoint getMasterAddress();
 	
-	long getKeeperBeginOffset();
-	
 	ReplicationStoreMeta dupReplicationStoreMeta();
 	
 	void loadMeta() throws IOException;
-	
-	void saveMeta(String name, ReplicationStoreMeta replicationStoreMeta) throws IOException;
-	
-	void updateMeta(String name, long rdbLastKeeperOffset) throws IOException;
-
-	void psyncBegun(String masterRunid, long offset) throws IOException;
-	
+		
 	/**
 	 * keeper backup -> active
 	 * @param name
 	 * @throws IOException
 	 */
-	void backupBecomeActive() throws IOException;
+	void becomeActive() throws IOException;
 	
 	/**
 	 * keeper active -> backup
 	 * @throws IOException 
 	 */
-	void activeBecomeBackup() throws IOException;
+	void becomeBackup() throws IOException;
 	
-	void setKeeperState(KeeperState keeperState) throws IOException;
+	ReplicationStoreMeta rdbBegun(String replId, long beginOffset, String rdbFile, EofType eofType, String cmdFilePrefix) throws IOException;
 
-	ReplicationStoreMeta rdbBegun(String masterRunid, long beginOffset, String rdbFile, long rdbFileSize, String cmdFilePrefix) throws IOException;
+	void setRdbFileSize(long rdbFileSize) throws IOException;
 
-	/**
-	 * redis failover
-	 * @param newMasterEndPoint
-	 * @param newMasterId
-	 * @param offsetdelta  newBeginOffset = beginoffset + delta
-	 * @throws IOException 
-	 */
+	@Deprecated
 	void masterChanged(long keeperOffset, DefaultEndPoint newMasterEndpoint, String newMasterRunid, long newMasterReplOffset) throws IOException;
 
-	ReplicationStoreMeta rdbUpdated(String rdbFile, long rdbFileSize, long masterOffset) throws IOException;
-	
-	long redisOffsetToKeeperOffset(long redisOffset);
+	ReplicationStoreMeta rdbUpdated(String rdbFile, EofType eofType, long rdbOffset) throws IOException;
 	
 	void updateKeeperRunid(String keeperRunid) throws IOException;
+
+	boolean isFresh();
 }

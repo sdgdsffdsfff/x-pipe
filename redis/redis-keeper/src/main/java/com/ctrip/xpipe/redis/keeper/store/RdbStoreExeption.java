@@ -1,6 +1,9 @@
 package com.ctrip.xpipe.redis.keeper.store;
 
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
 import com.ctrip.xpipe.redis.keeper.exception.RedisKeeperRuntimeException;
+
+import java.io.File;
 
 /**
  * @author wenchao.meng
@@ -11,8 +14,8 @@ public class RdbStoreExeption extends RedisKeeperRuntimeException{
 
 	private static final long serialVersionUID = 1L;
 
-	public RdbStoreExeption(long expectedSize, long realSize) {
-		super(String.format("expected:%d, real:%d", expectedSize, realSize));
+	public RdbStoreExeption(EofType eofType, File rdbFile) {
+		super(String.format("eofType:%s, file:%s, len:%d", eofType, rdbFile, rdbFile.length()));
 	}
 
 }

@@ -1,22 +1,24 @@
 package com.ctrip.xpipe.redis.core.store;
 
+import com.ctrip.xpipe.api.lifecycle.Destroyable;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+import io.netty.buffer.ByteBuf;
+
 import java.io.Closeable;
 import java.io.IOException;
-
-import io.netty.buffer.ByteBuf;
 
 /**
  * @author wenchao.meng
  *
  *         2016年4月19日 下午3:43:56
  */
-public interface ReplicationStore extends Closeable {
+public interface ReplicationStore extends Closeable, Destroyable {
 
 	public static String BACKUP_REPLICATION_STORE_REDIS_MASTER_META_NAME = "BACKUP_REDIS_MASTER";
 
 	// rdb related
-	RdbStore beginRdb(String masterRunid, long masterOffset, long rdbFileSize) throws IOException;
-
+	RdbStore beginRdb(String replId, long rdbOffset, EofType eofType) throws IOException;
+	
 	DumpedRdbStore prepareNewRdb() throws IOException;
 
 	void rdbUpdated(DumpedRdbStore dumpedRdbStore) throws IOException;
@@ -34,16 +36,17 @@ public interface ReplicationStore extends Closeable {
 	// meta related
 	MetaStore getMetaStore();
 
+	void shiftReplicationId(String newReplId) throws IOException;
+	
 	long getEndOffset();
+	
+	long firstAvailableOffset();
+
+	long beginOffsetWhenCreated();
 
 	boolean isFresh();
 
-	long getKeeperEndOffset();
-
-	long nextNonOverlappingKeeperBeginOffset();
-
-	// gc related
-	void delete();
+	boolean checkOk();
 
 	boolean gc();
 }

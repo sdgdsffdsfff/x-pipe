@@ -4,8 +4,9 @@ package com.ctrip.xpipe.redis.core.protocal.cmd;
 import com.ctrip.xpipe.api.pool.SimpleObjectPool;
 import com.ctrip.xpipe.netty.commands.NettyClient;
 import com.ctrip.xpipe.redis.core.protocal.protocal.RequestStringParser;
-
 import io.netty.buffer.ByteBuf;
+
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author marsqing
@@ -16,8 +17,8 @@ public class Fsync extends AbstractRedisCommand<String> {
 	
 	public static String SUCCESS_STRING = "CONTINUE";
 	
-	public Fsync(SimpleObjectPool<NettyClient> clientPool) {
-		super(clientPool);
+	public Fsync(SimpleObjectPool<NettyClient> clientPool, ScheduledExecutorService scheduled) {
+		super(clientPool, scheduled);
 	}
 
 	@Override
@@ -26,7 +27,7 @@ public class Fsync extends AbstractRedisCommand<String> {
 	}
 
 	@Override
-	protected ByteBuf getRequest() {
+	public ByteBuf getRequest() {
 		RequestStringParser requestString = new RequestStringParser(getName());
 		return requestString.format();
 	}

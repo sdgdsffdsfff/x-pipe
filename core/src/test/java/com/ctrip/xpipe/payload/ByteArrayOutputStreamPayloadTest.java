@@ -1,16 +1,17 @@
 package com.ctrip.xpipe.payload;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.WritableByteChannel;
-
+import com.ctrip.xpipe.AbstractTest;
+import com.ctrip.xpipe.concurrent.AbstractExceptionLogTask;
+import com.ctrip.xpipe.testutils.MemoryPrinter;
+import io.netty.buffer.ByteBuf;
 import org.junit.Assert;
 import org.junit.Test;
 
-import com.ctrip.xpipe.AbstractTest;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.WritableByteChannel;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * @author wenchao.meng
@@ -18,22 +19,23 @@ import io.netty.buffer.ByteBufAllocator;
  * 2016年4月24日 下午8:58:12
  */
 public class ByteArrayOutputStreamPayloadTest extends AbstractTest{
-	
-	
+
 	@Test
-	public void testInout() throws IOException{
+	public void testInout() throws Exception {
 		
 		ByteArrayOutputStreamPayload payload = new ByteArrayOutputStreamPayload();
 		String randomStr = randomString();
 		
-		ByteBuf byteBuf = ByteBufAllocator.DEFAULT.buffer(randomStr.length());
+		ByteBuf byteBuf = directByteBuf(randomStr.length());
+
 		byteBuf.writeBytes(randomStr.getBytes());
 		payload.startInput();
 		payload.in(byteBuf);
 		payload.endInput();
 		
 		
-		final ByteBuf result = ByteBufAllocator.DEFAULT.buffer(randomStr.length());
+		final ByteBuf result = directByteBuf(randomStr.length());
+
 		payload.startOutput();
 		long wroteLength = payload.out(new WritableByteChannel() {
 			
@@ -63,6 +65,66 @@ public class ByteArrayOutputStreamPayloadTest extends AbstractTest{
 		byte []resultArray = new byte[(int) wroteLength];
 		result.readBytes(resultArray);
 		Assert.assertEquals(randomStr, new String(resultArray));
+	}
+
+
+	@Test
+	public void testNewHeap() throws Exception {
+		
+		final MemoryPrinter memoryPrinter = new MemoryPrinter(scheduled);
+
+		memoryPrinter.printMemory();
+
+		final int length = 1 << 10;
+		int concurrentCount = 10;
+		final CountDownLatch latch = new CountDownLatch(concurrentCount);
+		
+		final ByteBuf byteBuf = directByteBuf(length);
+
+		byteBuf.writeBytes(randomString(length).getBytes());
+
+		byte []dst = new byte[length];
+		byteBuf.readBytes(dst);
+
+		memoryPrinter.printMemory();
+
+		for(int i=0;i<concurrentCount;i++){
+
+			Thread current = new Thread(
+					new AbstractExceptionLogTask() {
+						@Override
+						protected void doRun() throws Exception {
+							
+							try{
+								byteBuf.readerIndex(0);
+								ByteArrayOutputStream baous = new ByteArrayOutputStream();
+								byteBuf.readBytes(baous, length);
+							}finally{
+								latch.countDown();
+							}
+						}
+			});
+			current.start();
+			memoryPrinter.printMemory();
+			
+		}
+		
+		latch.await();
+	}
+
+	@Test
+	public void testScaleOut() throws Exception {
+		ByteArrayOutputStreamPayload payload = new ByteArrayOutputStreamPayload();
+		String randomStr = randomString();
+
+		ByteBuf byteBuf = directByteBuf(randomStr.length());
+
+		randomStr += randomString(2<<11);
+
+		byteBuf.writeBytes(randomStr.getBytes());
+		payload.startInput();
+		payload.in(byteBuf);
+		payload.endInput();
 	}
 
 }

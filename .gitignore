@@ -1,6 +1,8 @@
 testbin
-TODO
+bin
 *.swp
+*.versionsBackup
+tmp
 
 #maven
 target
@@ -11,10 +13,14 @@ reports
 .project
 .classpath
 *.class
+.apt_generated
+.factorypath
 
 # local files
 .DS_Store
 datasources.xml
+!redis/redis-console/src/test/resources/datasources.xml
+config-cache/*
 
 # Idea files
 .idea
@@ -27,7 +33,6 @@ datasources.xml
 *.jar
 *.war
 *.ear
-doc
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*

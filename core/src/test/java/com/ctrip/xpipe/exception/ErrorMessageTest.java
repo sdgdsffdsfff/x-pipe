@@ -1,10 +1,5 @@
 package com.ctrip.xpipe.exception;
 
-import java.io.IOException;
-
-import org.junit.Assert;
-import org.junit.Test;
-
 import com.ctrip.xpipe.AbstractTest;
 import com.ctrip.xpipe.api.codec.Codec;
 import com.ctrip.xpipe.api.codec.GenericTypeReference;
@@ -12,6 +7,10 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.io.IOException;
 
 
 /**
@@ -25,7 +24,29 @@ public class ErrorMessageTest extends AbstractTest{
 		NET_EXCEPTION,
 		DB_EXCEPTION
 	}
+
+	public static class TestErrorMessage extends ErrorMessage<ERRORCODE>{
+		
+		public TestErrorMessage(){}
+		public TestErrorMessage(ERRORCODE errorType, String errorMessage){
+			super(errorType, errorMessage);
+		}
+		
+	}
 	
+	@Test
+	public void testSubClass(){
+		
+		TestErrorMessage testErrorMessage = new TestErrorMessage(ERRORCODE.DB_EXCEPTION, "hello");
+		String encode = Codec.DEFAULT.encode(testErrorMessage);
+	
+		TestErrorMessage decode = Codec.DEFAULT.decode(encode, TestErrorMessage.class);
+		
+		Assert.assertEquals(testErrorMessage, decode);
+		
+		
+	}
+
 	@Test
 	public void testSerializa() throws JsonParseException, JsonMappingException, IOException{
 
@@ -52,8 +73,6 @@ public class ErrorMessageTest extends AbstractTest{
 			Assert.fail();
 		}catch(Exception e){
 		}
-		
-		
 	}
-
+	
 }

@@ -1,62 +1,168 @@
 package com.ctrip.xpipe.redis.keeper.store;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import com.ctrip.xpipe.concurrent.AbstractExceptionLogTask;
+import com.ctrip.xpipe.netty.filechannel.ReferenceFileRegion;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+import com.ctrip.xpipe.redis.core.protocal.protocal.LenEofType;
+import com.ctrip.xpipe.redis.core.store.FullSyncListener;
+import com.ctrip.xpipe.redis.core.store.RdbStore;
+import com.ctrip.xpipe.redis.keeper.AbstractRedisKeeperTest;
+import com.ctrip.xpipe.redis.keeper.config.DefaultKeeperConfig;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFuture;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.junit.Test;
-
-import com.ctrip.xpipe.redis.core.store.CommandsListener;
-import com.ctrip.xpipe.redis.keeper.AbstractRedisKeeperTest;
-import com.ctrip.xpipe.redis.keeper.config.DefaultKeeperConfig;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import static org.junit.Assert.assertEquals;
 
 public class DefaultReplicationStoreTest extends AbstractRedisKeeperTest{
 
-	@Test
-	public void test() throws Exception {
-		File baseDir = new File(System.getProperty("java.io.tmpdir"), "xpipe");
-		baseDir.deleteOnExit();
-		System.out.println(baseDir.getCanonicalFile());
+	private File baseDir;
+	
+	private DefaultReplicationStore store; 
 
-		DefaultReplicationStore store = new DefaultReplicationStore(baseDir, new DefaultKeeperConfig(), randomKeeperRunid());
-		store.beginRdb("master", -1, -1);
+	@Before
+	public void beforeDefaultReplicationStoreTest() throws IOException{
+		baseDir = new File(getTestFileDir());
+	}
+
+	@Test
+	public void testInterruptedException() throws IOException {
+
+		String keeperRunid = randomKeeperRunid();
+		int dataLen = 100;
+		store = new DefaultReplicationStore(baseDir, new DefaultKeeperConfig(), keeperRunid, createkeeperMonitor());
+		RdbStore rdbStore = store.beginRdb(randomKeeperRunid(), -1, new LenEofType(dataLen));
+
+		rdbStore.writeRdb(Unpooled.wrappedBuffer(randomString(dataLen).getBytes()));
+		rdbStore.endRdb();
+
+		Thread.currentThread().interrupt();
+		store = new DefaultReplicationStore(baseDir, new DefaultKeeperConfig(), keeperRunid, createkeeperMonitor());
+
+
+		//clear interrupt
+		Thread.interrupted();
+
+		store.appendCommands(Unpooled.wrappedBuffer(randomString(dataLen).getBytes()));
+		store = new DefaultReplicationStore(baseDir, new DefaultKeeperConfig(), keeperRunid, createkeeperMonitor());
+
+	}
+	
+	@Test
+	public void testReadWhileDestroy() throws Exception{
+
+		store = new DefaultReplicationStore(baseDir, new DefaultKeeperConfig(), randomKeeperRunid(), createkeeperMonitor());
+		store.getMetaStore().becomeActive();
+
+		int dataLen = 1000;
+		RdbStore rdbStore = store.beginRdb(randomKeeperRunid(), -1, new LenEofType(dataLen));
+		
+		rdbStore.writeRdb(Unpooled.wrappedBuffer(randomString(dataLen).getBytes()));
+		rdbStore.endRdb();
+		
+		CountDownLatch latch  = new CountDownLatch(2);
+		AtomicBoolean result = new AtomicBoolean(true);
+		
+		executors.execute(new AbstractExceptionLogTask() {
+			
+			@Override
+			protected void doRun() throws Exception {
+				
+				try{
+					sleep(2);
+					store.close();
+					store.destroy();
+				}finally{
+					latch.countDown();
+				}
+			}
+		});
+		
+	
+		executors.execute(new AbstractExceptionLogTask() {
+			
+			@Override
+			protected void doRun() throws Exception {
+				
+				try{
+					store.fullSyncIfPossible(new FullSyncListener() {
+						
+						@Override
+						public ChannelFuture onCommand(ReferenceFileRegion referenceFileRegion) {
+							
+							return null;
+						}
+						
+						@Override
+						public void beforeCommand() {
+							
+						}
+						
+						@Override
+						public void setRdbFileInfo(EofType eofType, long rdbFileKeeperOffset) {
+							
+						}
+						
+						@Override
+						public void onFileData(ReferenceFileRegion referenceFileRegion) throws IOException {
+							sleep(10);
+						}
+						
+						@Override
+						public boolean isOpen() {
+							return true;
+						}
+						
+						@Override
+						public void exception(Exception e) {
+							logger.info("[exception][fail]" + e.getMessage());
+							result.set(false);
+						}
+						
+						@Override
+						public void beforeFileData() {
+							
+						}
+					});
+				}catch(Exception e){
+					logger.info("[exception][fail]" + e.getMessage());
+					result.set(false);
+				}finally{
+					latch.countDown();
+				}
+			}
+		});
+		
+		
+		latch.await(100, TimeUnit.MILLISECONDS);
+		Assert.assertFalse(result.get());
+	}
+
+	
+	@Test
+	public void testReadWrite() throws Exception {
+
+		store = new DefaultReplicationStore(baseDir, new DefaultKeeperConfig(), randomKeeperRunid(), createkeeperMonitor());
+		store.getMetaStore().becomeActive();
+
+
+		StringBuffer exp = new StringBuffer();
 
 		int cmdCount = 4;
 		int cmdLen = 10;
 
-		final CountDownLatch latch = new CountDownLatch(cmdCount * cmdLen);
-		final StringBuffer got = new StringBuffer();
-		store.getCommandStore().addCommandsListener(0, new CommandsListener() {
+		store.beginRdb("master", -1, new LenEofType(-1));
 
-			@Override
-			public void onCommand(ByteBuf byteBuf) {
-				int len = byteBuf.readableBytes();
-				byte[] dst = new byte[len];
-				byteBuf.readBytes(dst);
-				got.append(new String(dst, 0, len));
-				for (int i = 0; i < len; i++) {
-					latch.countDown();
-				}
-			}
-
-			@Override
-			public boolean isOpen() {
-				return true;
-			}
-
-			@Override
-			public void beforeCommand() {
-			}
-		});
-
-		StringBuffer exp = new StringBuffer();
 		for (int j = 0; j < cmdCount; j++) {
 			ByteBuf buf = Unpooled.buffer();
 			String cmd = UUID.randomUUID().toString().substring(0, cmdLen);
@@ -64,10 +170,10 @@ public class DefaultReplicationStoreTest extends AbstractRedisKeeperTest{
 			buf.writeBytes(cmd.getBytes());
 			store.getCommandStore().appendCommands(buf);
 		}
-
-		assertTrue(latch.await(1, TimeUnit.SECONDS));
-		assertEquals(exp.toString(), got.toString());
+		String result = readCommandFileTilEnd(store, exp.length());
+		assertEquals(exp.toString(), result);
 		store.close();
 	}
-
+	
+	
 }

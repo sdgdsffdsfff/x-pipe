@@ -1,18 +1,11 @@
 package com.ctrip.xpipe.redis.keeper.store;
 
-import java.io.IOException;
-
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
-import com.ctrip.xpipe.redis.core.meta.KeeperState;
-import com.ctrip.xpipe.redis.core.store.CommandsListener;
-import com.ctrip.xpipe.redis.core.store.DumpedRdbStore;
-import com.ctrip.xpipe.redis.core.store.FullSyncListener;
-import com.ctrip.xpipe.redis.core.store.MetaStore;
-import com.ctrip.xpipe.redis.core.store.RdbStore;
-import com.ctrip.xpipe.redis.core.store.ReplicationStore;
-import com.ctrip.xpipe.redis.core.store.ReplicationStoreMeta;
-
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+import com.ctrip.xpipe.redis.core.store.*;
 import io.netty.buffer.ByteBuf;
+
+import java.io.IOException;
 
 /**
  * @author marsqing
@@ -22,9 +15,8 @@ import io.netty.buffer.ByteBuf;
 public class RdbOnlyReplicationStore implements ReplicationStore {
 
 	private DumpedRdbStore dumpedRdbStore;
-	private DefaultRdbStore rdbStore;
-	private String masterRunid;
-	private long masterOffset;
+	private String replId;
+	private long rdbOffset;
 	private MetaStore metaStore;
 
 	public RdbOnlyReplicationStore(DumpedRdbStore dumpedRdbStore) {
@@ -37,27 +29,32 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 			}
 
 			@Override
-			public void saveMeta(String name, ReplicationStoreMeta replicationStoreMeta) throws IOException {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
 			public void loadMeta() throws IOException {
 				throw new UnsupportedOperationException();
 			}
 
 			@Override
-			public String getMasterRunid() {
-				return masterRunid;
+			public String getReplId() {
+				return replId;
 			}
-
+			
 			@Override
-			public DefaultEndPoint getMasterAddress() {
+			public String getReplId2() {
+				throw new UnsupportedOperationException();
+			}
+			
+			@Override
+			public Long getSecondReplIdOffset() {
+				throw new UnsupportedOperationException();
+			}
+			
+			@Override
+			public ReplicationStoreMeta shiftReplicationId(String newReplId, Long currentOffset) throws IOException {
 				throw new UnsupportedOperationException();
 			}
 
 			@Override
-			public long getKeeperBeginOffset() {
+			public DefaultEndPoint getMasterAddress() {
 				throw new UnsupportedOperationException();
 			}
 
@@ -78,33 +75,12 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 			}
 
 			@Override
-			public void activeBecomeBackup() throws IOException {
+			public void becomeBackup() throws IOException {
 				throw new UnsupportedOperationException();
 			}
 
 			@Override
-			public ReplicationStoreMeta rdbUpdated(String rdbFile, long rdbFileSize, long masterOffset) throws IOException {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public ReplicationStoreMeta rdbBegun(String masterRunid, long beginOffset, String rdbFile, long rdbFileSize, String cmdFilePrefix)
-					throws IOException {
-				return null;
-			}
-
-			@Override
-			public long redisOffsetToKeeperOffset(long redisOffset) {
-				return 0;
-			}
-
-			@Override
-			public void backupBecomeActive() throws IOException {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public void psyncBegun(String keeperRunid, long offset) throws IOException {
+			public void becomeActive() throws IOException {
 				throw new UnsupportedOperationException();
 			}
 
@@ -114,19 +90,28 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 			}
 
 			@Override
-			public void updateMeta(String name, long rdbLastKeeperOffset) throws IOException {
+			public boolean isFresh() {
+				return true;
+			}
+
+			@Override
+			public ReplicationStoreMeta rdbBegun(String masterRunid, long beginOffset, String rdbFile, EofType eofType,
+					String cmdFilePrefix) throws IOException {
 				throw new UnsupportedOperationException();
 			}
 
 			@Override
-			public void setKeeperState(KeeperState keeperState) throws IOException {
+			public ReplicationStoreMeta rdbUpdated(String rdbFile, EofType eofType, long masterOffset)
+					throws IOException {
 				throw new UnsupportedOperationException();
 			}
-		};
-	}
 
-	public long getMasterOffset() {
-		return masterOffset;
+			
+			@Override
+			public void setRdbFileSize(long rdbFileSize) throws IOException {
+			}
+
+		};
 	}
 
 	@Override
@@ -134,11 +119,11 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 	}
 
 	@Override
-	public RdbStore beginRdb(String masterRunid, long masterOffset, long rdbFileSize) throws IOException {
-		this.masterRunid = masterRunid;
-		this.masterOffset = masterOffset;
-		dumpedRdbStore.setMasterOffset(masterOffset);
-		dumpedRdbStore.setRdbFileSize(rdbFileSize);
+	public RdbStore beginRdb(String replId, long rdbOffset, EofType eofType) throws IOException {
+		this.replId = replId;
+		this.rdbOffset = rdbOffset;
+		dumpedRdbStore.setRdbOffset(this.rdbOffset);
+		dumpedRdbStore.setEofType(eofType);
 		return dumpedRdbStore;
 	}
 
@@ -146,9 +131,14 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 	public long getEndOffset() {
 		return -1L;
 	}
+	
+	@Override
+	public long firstAvailableOffset() {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
-	public void delete() {
+	public void destroy() {
 		throw new UnsupportedOperationException();
 	}
 
@@ -159,7 +149,7 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 
 	@Override
 	public boolean gc() {
-		return rdbStore.delete();
+		return true;
 	}
 
 	@Override
@@ -170,16 +160,6 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 	@Override
 	public boolean isFresh() {
 		return true;
-	}
-
-	@Override
-	public long getKeeperEndOffset() {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public long nextNonOverlappingKeeperBeginOffset() {
-		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -207,4 +187,18 @@ public class RdbOnlyReplicationStore implements ReplicationStore {
 		throw new UnsupportedOperationException();
 	}
 
+	@Override
+	public boolean checkOk() {
+		return dumpedRdbStore.checkOk();
+	}
+
+	@Override
+	public long beginOffsetWhenCreated() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void shiftReplicationId(String newReplId) throws IOException {
+		throw new UnsupportedOperationException();
+	}
 }

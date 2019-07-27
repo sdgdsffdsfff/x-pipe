@@ -1,7 +1,9 @@
 package com.ctrip.xpipe.redis.core.store;
 
+import com.ctrip.xpipe.netty.filechannel.ReferenceFileRegion;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
+
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 
 /**
  * @author wenchao.meng
@@ -11,11 +13,7 @@ import java.nio.channels.FileChannel;
 public interface RdbFileListener {
 	
 	
-	/**
-	 * @param rdbFileSize
-	 * @param rdbFileOffset
-	 */
-	void setRdbFileInfo(long rdbFileSize, long rdbFileKeeperOffset);
+	void setRdbFileInfo(EofType eofType, long rdbOffset);
 	
 	/**
 	 * 
@@ -24,7 +22,7 @@ public interface RdbFileListener {
 	 * @param len  when len == -1, that means file has ended
 	 * @throws IOException 
 	 */
-	void onFileData(FileChannel fileChannel, long pos, long len) throws IOException;
+	void onFileData(ReferenceFileRegion referenceFileRegion) throws IOException;
 	
 	/**
 	 * @return

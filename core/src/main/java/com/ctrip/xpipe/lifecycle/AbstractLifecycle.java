@@ -1,16 +1,8 @@
 package com.ctrip.xpipe.lifecycle;
 
-import org.slf4j.LoggerFactory;
+import com.ctrip.xpipe.api.lifecycle.*;
 import org.slf4j.Logger;
-
-import com.ctrip.xpipe.api.lifecycle.Disposable;
-import com.ctrip.xpipe.api.lifecycle.Initializable;
-import com.ctrip.xpipe.api.lifecycle.Lifecycle;
-import com.ctrip.xpipe.api.lifecycle.LifecycleController;
-import com.ctrip.xpipe.api.lifecycle.LifecycleState;
-import com.ctrip.xpipe.api.lifecycle.LifecycleStateAware;
-import com.ctrip.xpipe.api.lifecycle.Startable;
-import com.ctrip.xpipe.api.lifecycle.Stoppable;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author wenchao.meng
@@ -22,11 +14,11 @@ public abstract class AbstractLifecycle implements Lifecycle, LifecycleStateAwar
 	protected Logger logger = LoggerFactory.getLogger(getClass());
 	
 	private LifecycleState lifecycleState;
-	private LifecycleController LifecycleController;
+	private LifecycleController lifecycleController;
 	
 	public AbstractLifecycle() {
-		this.LifecycleController  = new DefaultLifecycleController();
-		this.lifecycleState = new DefaultLifecycleState(this, LifecycleController);
+		this.lifecycleController = new DefaultLifecycleController();
+		this.lifecycleState = new DefaultLifecycleState(this, lifecycleController);
 	}
 	
 	
@@ -35,7 +27,7 @@ public abstract class AbstractLifecycle implements Lifecycle, LifecycleStateAwar
 	public void initialize() throws Exception {
 
 		String phaseName = lifecycleState.getPhaseName();
-		if(!LifecycleController.canInitialize(phaseName)){
+		if(!lifecycleController.canInitialize(phaseName)){
 			logger.error("[initialize][can not init]{}, {}", phaseName, this);
 			throw new IllegalStateException("can not initialize:" + phaseName + "," + this);
 		}
@@ -58,7 +50,7 @@ public abstract class AbstractLifecycle implements Lifecycle, LifecycleStateAwar
 	public void start() throws Exception {
 
 		String phaseName = lifecycleState.getPhaseName();
-		if(!LifecycleController.canStart(phaseName)){
+		if(!lifecycleController.canStart(phaseName)){
 			logger.error("[initialize][can not start]{},{}", phaseName, this);
 			throw new IllegalStateException("can not start:" + phaseName + ", " + this);
 		}
@@ -80,7 +72,7 @@ public abstract class AbstractLifecycle implements Lifecycle, LifecycleStateAwar
 	public void stop() throws Exception {
 
 		String phaseName = lifecycleState.getPhaseName();
-		if(!LifecycleController.canStop(phaseName)){
+		if(!lifecycleController.canStop(phaseName)){
 			logger.error("[initialize][can not stop]{}, {}" , phaseName, this);
 			throw new IllegalStateException("can not stop:" + phaseName + "," + this);
 		}
@@ -103,7 +95,7 @@ public abstract class AbstractLifecycle implements Lifecycle, LifecycleStateAwar
 	public void dispose() throws Exception {
 
 		String phaseName = lifecycleState.getPhaseName();
-		if(!LifecycleController.canDispose(phaseName)){
+		if(!lifecycleController.canDispose(phaseName)){
 			logger.error("[initialize][can not stop]{}, {}" , phaseName, this);
 			throw new IllegalStateException("can not dispose:" + phaseName + "," + this);
 		}

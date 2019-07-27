@@ -1,16 +1,20 @@
 package com.ctrip.xpipe.redis.meta.server.job;
 
-import org.junit.Assert;
+import com.ctrip.xpipe.lifecycle.LifecycleHelper;
+import com.ctrip.xpipe.redis.core.console.ConsoleService;
+import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
+import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerTest;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import static org.mockito.Mockito.*;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import com.ctrip.xpipe.redis.core.console.ConsoleService;
-import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
-import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerTest;
+import java.util.concurrent.RejectedExecutionException;
+
+import static org.mockito.Mockito.*;
+
 
 /**
  * @author wenchao.meng
@@ -28,25 +32,55 @@ public class ConsoleNotifycationTaskTest extends AbstractMetaServerTest{
 	
 	@Before
 	public void beforeConsoleNotifycationTaskTest() throws Exception{
+		
 		consoleNotifycationTask = new ConsoleNotifycationTask();
-		doThrow(new Exception()).when(consoleService).keeperActiveChanged(anyString(), anyString(), anyString(), (KeeperMeta) anyObject());
+		consoleNotifycationTask.initialize();
+		
 		consoleNotifycationTask.setConsoleService(consoleService);
+	}
+	
+	@Test
+	public void testSuccess() throws Exception{
+
+		int times = 100;
+		for(int i=0;i<times;i++){
+			consoleNotifycationTask.keeperActiveElected("cluster1", "shard1", new KeeperMeta());
+			sleep(10);
+			verify(consoleService, times(i + 1)).keeperActiveChanged(anyString(), anyString(), anyString(), any(KeeperMeta.class));
+		}
+		
+	}
+	
+	@Test(expected = RejectedExecutionException.class)
+	public void testDispose() throws Exception{
+
+		consoleNotifycationTask.dispose();
+		consoleNotifycationTask.keeperActiveElected("cluster1", "shard1", new KeeperMeta());
+		
 	}
 	
 	
 	@Test
-	public void testTask() throws Exception{
+	public void testException() throws Exception{
 
-		Assert.assertFalse(consoleNotifycationTask.getThread().isAlive());
-
-		consoleNotifycationTask.keeperActiveElected("cluster1", "shard1", new KeeperMeta());
+		ConsoleNotifycationTask task = new ConsoleNotifycationTask(100);
+		task.initialize();
+		task.setConsoleService(consoleService);
 		
-		sleep(1000);
-		Assert.assertTrue(consoleNotifycationTask.getThread().isAlive());
+		doThrow(new Exception()).when(consoleService).keeperActiveChanged(anyString(), anyString(), anyString(), (KeeperMeta) anyObject());
 
-		consoleNotifycationTask.getThread().interrupt();
-		sleep(100);
-		Assert.assertFalse(consoleNotifycationTask.getThread().isAlive());
+		task.keeperActiveElected("cluster1", "shard1", new KeeperMeta());
+		
+		sleep(300);
+		verify(consoleService, atLeast(2)).keeperActiveChanged(anyString(), anyString(), anyString(), any(KeeperMeta.class));
+		
+		task.dispose();
 		
 	}
+	
+	@After
+	public void afterConsoleNotifycationTaskTest() throws Exception{
+		LifecycleHelper.disposeIfPossible(consoleNotifycationTask);
+	}
+	
 }

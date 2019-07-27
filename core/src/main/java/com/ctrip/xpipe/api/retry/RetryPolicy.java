@@ -11,9 +11,11 @@ public interface RetryPolicy {
 
 	int retryWaitMilli(boolean sleep) throws InterruptedException;
 	
-	boolean retry(Exception e);
+	boolean retry(Throwable e);
 	
 	int waitTimeoutMilli();
 
 	int getRetryTimes();
+	
+	boolean timeoutCancel();
 }

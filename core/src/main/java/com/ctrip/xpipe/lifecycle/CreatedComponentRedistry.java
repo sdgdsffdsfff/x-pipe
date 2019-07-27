@@ -1,14 +1,14 @@
 package com.ctrip.xpipe.lifecycle;
 
+import com.ctrip.xpipe.api.lifecycle.ComponentRegistry;
+import com.ctrip.xpipe.api.lifecycle.Lifecycle;
+
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
-
-import com.ctrip.xpipe.api.lifecycle.Lifecycle;
-import com.ctrip.xpipe.api.lifecycle.ComponentRegistry;
 
 /**
  * 
@@ -150,7 +150,7 @@ public class CreatedComponentRedistry extends AbstractComponentRegistry implemen
 	}
 
 	@Override
-	protected void cleanComponents() {
+	public void cleanComponents() {
 		components.clear();
 	}
 	

@@ -1,14 +1,5 @@
 package com.ctrip.xpipe.redis.meta.server;
 
-
-
-import java.util.Map;
-
-import org.apache.curator.framework.CuratorFramework;
-import org.junit.Before;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-
 import com.ctrip.xpipe.api.foundation.FoundationService;
 import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
 import com.ctrip.xpipe.redis.core.entity.DcMeta;
@@ -24,6 +15,12 @@ import com.ctrip.xpipe.redis.meta.server.meta.impl.DefaultDcMetaCache;
 import com.ctrip.xpipe.redis.meta.server.spring.MetaServerContextConfig;
 import com.ctrip.xpipe.zk.ZkClient;
 import com.ctrip.xpipe.zk.impl.TestZkClient;
+import org.apache.curator.framework.CuratorFramework;
+import org.junit.Before;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+import java.util.Map;
 
 /**
  * @author wenchao.meng
@@ -41,10 +38,11 @@ public class AbstractMetaServerContextTest extends AbstractMetaServerTest{
 	private String dc = FoundationService.DEFAULT.getDataCenter();
 
 	@Before
-	public void beforeAbstractMetaServerTest() throws Exception{
+	public void beforeAbstractMetaServerContextTest() throws Exception{
 		arrangeTaskStart(false);
 		
-		int zkPort = randomPort();
+		int zkPort = getTestZkPort();
+				
 		if(isStartZk()){
 			startZk(zkPort);
 		}
@@ -62,21 +60,21 @@ public class AbstractMetaServerContextTest extends AbstractMetaServerTest{
 		return true;
 	}
 
+	
 	@Override
-	protected void setProperties() {
-		super.setProperties();
+	protected void doBeforeAbstractTest() throws Exception {
+		super.doBeforeAbstractTest();
 		System.setProperty(DefaultDcMetaCache.MEMORY_META_SERVER_DAO_KEY, xpipeConfig);
 		System.setProperty("TOTAL_SLOTS", "16");
 	}
-	
-	
+
 	protected void arrangeTaskStart(boolean isStart) {
 		System.setProperty(ArrangeTaskExecutor.ARRANGE_TASK_EXECUTOR_START, String.valueOf(isStart));
 	}
 
 
 	@Override
-	protected ApplicationContext createSpringContext() {
+	protected ConfigurableApplicationContext createSpringContext() {
 		AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
 		context.register(MetaServerContextConfig.class);
 		context.refresh();
@@ -103,7 +101,8 @@ public class AbstractMetaServerContextTest extends AbstractMetaServerTest{
 		try{
 			TestZkClient zkClient = new TestZkClient();
 			zkClient.setZkAddress(zkAddress);
-			zkClient.initialize();zkClient.start();
+			zkClient.initialize();
+			zkClient.start();
 			add(zkClient);
 			return zkClient;
 		}catch(Exception e){

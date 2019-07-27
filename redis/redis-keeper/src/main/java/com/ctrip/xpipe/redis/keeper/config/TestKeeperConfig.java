@@ -1,6 +1,7 @@
 package com.ctrip.xpipe.redis.keeper.config;
 
 import com.ctrip.xpipe.redis.core.config.AbstractCoreConfig;
+import com.ctrip.xpipe.redis.keeper.store.DefaultCommandStore;
 
 /**
  * @author wenchao.meng
@@ -8,10 +9,11 @@ import com.ctrip.xpipe.redis.core.config.AbstractCoreConfig;
  * Aug 18, 2016
  */
 public class TestKeeperConfig extends AbstractCoreConfig implements KeeperConfig{
-	
+
+	private int replicationStoreGcIntervalSeconds = 2;
 	private int replicationStoreCommandFileSize = 1024;
 	private int replicationStoreCommandFileNumToKeep = 2;
-	private int replicationStoreMaxCommandsToTransferBeforeCreateRdb = 1024;
+	private long replicationStoreMaxCommandsToTransferBeforeCreateRdb = 1024;
 	private int minTimeMilliToGcAfterCreate = 2000;
 	private int rdbDumpMinIntervalMilli = 1000;
 	
@@ -22,7 +24,7 @@ public class TestKeeperConfig extends AbstractCoreConfig implements KeeperConfig
 		
 	}
 	public TestKeeperConfig(int replicationStoreCommandFileSize, int replicationStoreCommandFileNumToKeep, 
-			int replicationStoreMaxCommandsToTransferBeforeCreateRdb, int minTimeMilliToGcAfterCreate) {
+			long replicationStoreMaxCommandsToTransferBeforeCreateRdb, int minTimeMilliToGcAfterCreate) {
 		this.replicationStoreCommandFileNumToKeep = replicationStoreCommandFileNumToKeep;
 		this.replicationStoreCommandFileSize = replicationStoreCommandFileSize;
 		this.replicationStoreMaxCommandsToTransferBeforeCreateRdb = replicationStoreMaxCommandsToTransferBeforeCreateRdb;
@@ -51,9 +53,13 @@ public class TestKeeperConfig extends AbstractCoreConfig implements KeeperConfig
 
 	@Override
 	public int getReplicationStoreGcIntervalSeconds() {
-		return 2;
+		return replicationStoreGcIntervalSeconds;
 	}
 
+	public void setReplicationStoreGcIntervalSeconds(int replicationStoreGcIntervalSeconds) {
+		this.replicationStoreGcIntervalSeconds = replicationStoreGcIntervalSeconds;
+	}
+	
 	@Override
 	public int getReplicationStoreCommandFileNumToKeep() {
 		return replicationStoreCommandFileNumToKeep;
@@ -95,4 +101,27 @@ public class TestKeeperConfig extends AbstractCoreConfig implements KeeperConfig
 	public int getReplicationStoreMinTimeMilliToGcAfterCreate() {
 		return minTimeMilliToGcAfterCreate;
 	}
+
+	@Override
+	public long getCommandReaderFlyingThreshold() {
+		return DefaultCommandStore.DEFAULT_COMMAND_READER_FLYING_THRESHOLD;
+	}
+
+	public void setMinTimeMilliToGcAfterCreate(int minTimeMilliToGcAfterCreate) {
+		this.minTimeMilliToGcAfterCreate = minTimeMilliToGcAfterCreate;
+	}
+	
+	public void setRdbDumpMinIntervalMilli(int rdbDumpMinIntervalMilli) {
+		this.rdbDumpMinIntervalMilli = rdbDumpMinIntervalMilli;
+	}
+
+	@Override
+	public int getDelayLogLimitMicro() {
+		return 20*1000;
+	}
+
+	@Override
+    public long getTrafficReportIntervalMillis() {
+        return 10000L;
+    }
 }

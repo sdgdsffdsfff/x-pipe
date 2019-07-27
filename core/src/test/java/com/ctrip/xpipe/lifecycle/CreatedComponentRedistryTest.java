@@ -1,11 +1,9 @@
 package com.ctrip.xpipe.lifecycle;
 
-import org.junit.Assert;
-import org.junit.Test;
-
 import com.ctrip.xpipe.AbstractTest;
 import com.ctrip.xpipe.api.lifecycle.Lifecycle;
-import com.ctrip.xpipe.lifecycle.CreatedComponentRedistry;
+import org.junit.Assert;
+import org.junit.Test;
 
 
 /**
@@ -41,7 +39,7 @@ public class CreatedComponentRedistryTest extends AbstractTest{
 		Assert.assertTrue(lifecycle2.getLifecycleState().isDisposed());
 
 		
-		Assert.assertEquals(2, registry.allComponents().size());;
+		Assert.assertEquals(2, registry.allComponents().size());
 		
 	}
 

@@ -1,13 +1,17 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
 
-import java.io.IOException;
 import com.ctrip.xpipe.api.command.CommandFuture;
 import com.ctrip.xpipe.api.command.CommandFutureListener;
 import com.ctrip.xpipe.lifecycle.LifecycleHelper;
+import com.ctrip.xpipe.redis.core.proxy.ProxyResourceManager;
 import com.ctrip.xpipe.redis.core.store.DumpedRdbStore;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.RedisMaster;
+import io.netty.channel.nio.NioEventLoopGroup;
+
+import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author wenchao.meng
@@ -22,15 +26,26 @@ public class RedisMasterNewRdbDumper extends AbstractRdbDumper{
 	
 	private RdbonlyRedisMasterReplication rdbonlyRedisMasterReplication;
 
-	public RedisMasterNewRdbDumper(RedisMaster redisMaster, RedisKeeperServer redisKeeperServer) {
+	private NioEventLoopGroup nioEventLoopGroup;
+	
+	private ScheduledExecutorService scheduled;
+
+	private ProxyResourceManager endpointManager;
+
+	public RedisMasterNewRdbDumper(RedisMaster redisMaster, RedisKeeperServer redisKeeperServer,
+                                   NioEventLoopGroup nioEventLoopGroup, ScheduledExecutorService scheduled,
+                                   ProxyResourceManager endpointManager) {
 		super(redisKeeperServer);
 		this.redisMaster = redisMaster;
+		this.nioEventLoopGroup = nioEventLoopGroup;
+		this.scheduled = scheduled;
+		this.endpointManager = endpointManager;
 	}
 
 	@Override
 	protected void doExecute() throws Exception {
 		
-		rdbonlyRedisMasterReplication = new RdbonlyRedisMasterReplication(redisKeeperServer, redisMaster, this);
+		rdbonlyRedisMasterReplication = new RdbonlyRedisMasterReplication(redisKeeperServer, redisMaster, nioEventLoopGroup, scheduled, this, endpointManager);
 		
 		rdbonlyRedisMasterReplication.initialize();
 		rdbonlyRedisMasterReplication.start();
@@ -81,7 +96,7 @@ public class RedisMasterNewRdbDumper extends AbstractRdbDumper{
 			redisMaster.getCurrentReplicationStore().rdbUpdated(dumpedRdbStore);
 			super.beginReceiveRdbData(masterOffset);
 		} catch (IOException e) {
-			logger.error("[waitUntilPsyncDone]", e);
+			logger.error("[beginReceiveRdbData]", e);
 		}
 	}
 	

@@ -1,19 +1,17 @@
 package com.ctrip.xpipe.simpleserver;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
-
+import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.ctrip.xpipe.lifecycle.AbstractLifecycle;
-
-import org.slf4j.Logger;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author wenchao.meng
@@ -29,6 +27,7 @@ public class Server extends AbstractLifecycle{
 	private ExecutorService executors = Executors.newCachedThreadPool();
 	private ServerSocket ss;
 	private AtomicInteger connected = new AtomicInteger(0);
+	private AtomicInteger totalConnected = new AtomicInteger(0);
 	
 	public Server(int port, IoActionFactory ioActionFactory){
 		this.port = port;
@@ -43,37 +42,48 @@ public class Server extends AbstractLifecycle{
 		return connected.get();
 	}
 	
+	public int getTotalConnected() {
+		return totalConnected.get();
+	}
+	
 	@Override
 	protected void doStart() throws Exception {
+		
+		final CountDownLatch latch = new CountDownLatch(1);
 		executors.execute(new Runnable() {
 			
 			@Override
 			public void run() {
 				
 				try {
-					ss = new ServerSocket(port);
-					if(logger.isInfoEnabled()){
-						logger.info("[run][listening]" + port);
+					try{
+						ss = new ServerSocket(port);
+						if(logger.isInfoEnabled()){
+							logger.info("[run][listening]" + port);
+						}
+					}finally{
+						latch.countDown();
 					}
+					
 					while(true){
 						
 						Socket socket = ss.accept();
+						connected.incrementAndGet();
+						totalConnected.incrementAndGet();
 						if(logger.isInfoEnabled()){
 							logger.info("[run][new socket]" + socket);
 						}
-						connected.incrementAndGet();
-						IoAction ioAction = ioActionFactory.createIoAction();
-						if(ioAction instanceof SocketAware){
-							((SocketAware) ioAction).setSocket(socket);
-						}
+						IoAction ioAction = ioActionFactory.createIoAction(socket);
 						executors.execute(new Task(socket, ioAction));
 					}
 					
 				} catch (IOException e) {
-					logger.error("[run]" + port, e);
+					logger.warn("[run]" + port + "," + e.getMessage());
+				}finally{
 				}
 			}
 		});
+		latch.await(10, TimeUnit.SECONDS);
 	}
 
 	@Override
@@ -98,15 +108,12 @@ public class Server extends AbstractLifecycle{
 		public void run() {
 			
 			try {
-				InputStream ins = socket.getInputStream();
-				OutputStream ous = socket.getOutputStream();
-				
 				while(true){
-					Object read = ioAction.read(ins);
+					Object read = ioAction.read();
 					if(read == null){
 						break;
 					}
-					ioAction.write(ous);
+					ioAction.write(read);
 				}
 			} catch (IOException e) {
 				logger.error("[run]" + socket, e);

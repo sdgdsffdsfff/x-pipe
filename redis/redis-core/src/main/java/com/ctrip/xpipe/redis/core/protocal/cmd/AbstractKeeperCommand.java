@@ -1,15 +1,16 @@
 package com.ctrip.xpipe.redis.core.protocal.cmd;
 
-
-import java.net.InetSocketAddress;
-
 import com.ctrip.xpipe.api.pool.SimpleObjectPool;
 import com.ctrip.xpipe.netty.commands.NettyClient;
+import com.ctrip.xpipe.proxy.ProxyEndpoint;
 import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
+import com.ctrip.xpipe.redis.core.entity.RouteMeta;
 import com.ctrip.xpipe.redis.core.meta.KeeperState;
 import com.ctrip.xpipe.redis.core.protocal.protocal.RequestStringParser;
-
+import com.ctrip.xpipe.tuple.Pair;
 import io.netty.buffer.ByteBuf;
+
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author marsqing
@@ -19,16 +20,16 @@ import io.netty.buffer.ByteBuf;
 public abstract class AbstractKeeperCommand<T> extends AbstractRedisCommand<T> {
 	
 	public static String GET_STATE = "getstate";
-	
+
 	public static String SET_STATE = "setstate";
 
 	
-	public AbstractKeeperCommand(SimpleObjectPool<NettyClient> clientPool) {
-		super(clientPool);
+	public AbstractKeeperCommand(SimpleObjectPool<NettyClient> clientPool, ScheduledExecutorService scheduled) {
+		super(clientPool, scheduled);
 	}
 
-	public AbstractKeeperCommand(KeeperMeta keeperMeta){
-		super(keeperMeta.getIp(), keeperMeta.getPort());
+	public AbstractKeeperCommand(KeeperMeta keeperMeta, ScheduledExecutorService scheduled){
+		super(keeperMeta.getIp(), keeperMeta.getPort(), scheduled);
 	}
 	
 	@Override
@@ -38,12 +39,12 @@ public abstract class AbstractKeeperCommand<T> extends AbstractRedisCommand<T> {
 	
 	public static class KeeperGetStateCommand extends AbstractKeeperCommand<KeeperState>{
 
-		public KeeperGetStateCommand(SimpleObjectPool<NettyClient> clientPool) {
-			super(clientPool);
+		public KeeperGetStateCommand(SimpleObjectPool<NettyClient> clientPool, ScheduledExecutorService scheduled) {
+			super(clientPool, scheduled);
 		}
 		
-		public KeeperGetStateCommand(KeeperMeta keeperMeta) {
-			super(keeperMeta);
+		public KeeperGetStateCommand(KeeperMeta keeperMeta, ScheduledExecutorService scheduled) {
+			super(keeperMeta, scheduled);
 		}
 
 		@Override
@@ -52,7 +53,7 @@ public abstract class AbstractKeeperCommand<T> extends AbstractRedisCommand<T> {
 		}
 
 		@Override
-		protected ByteBuf getRequest() {
+		public ByteBuf getRequest() {
 			return new RequestStringParser(getName(), GET_STATE).format();
 		}
 	}
@@ -60,22 +61,46 @@ public abstract class AbstractKeeperCommand<T> extends AbstractRedisCommand<T> {
 	public static class KeeperSetStateCommand extends AbstractKeeperCommand<String>{
 
 		private KeeperState state;
-		private InetSocketAddress masterAddress;
-		
-		public KeeperSetStateCommand(SimpleObjectPool<NettyClient> clientPool, KeeperState state, InetSocketAddress masterAddress) {
-			super(clientPool);
-			this.state = state;
-			this.masterAddress = masterAddress;
+		private Pair<String, Integer> masterAddress;
+		private RouteMeta routeMeta;
+
+		public KeeperSetStateCommand(SimpleObjectPool<NettyClient> clientPool,
+									 KeeperState state,
+									 Pair<String, Integer> masterAddress,
+									 ScheduledExecutorService scheduled) {
+			this(clientPool, state, masterAddress, null, scheduled);
 		}
 
-		public KeeperSetStateCommand(KeeperMeta keeperMeta, KeeperState state, InetSocketAddress masterAddress) {
-			super(keeperMeta);
+		public KeeperSetStateCommand(SimpleObjectPool<NettyClient> clientPool,
+									 KeeperState state,
+									 Pair<String, Integer> masterAddress,
+									 RouteMeta routeMeta,
+									 ScheduledExecutorService scheduled) {
+			super(clientPool, scheduled);
 			this.state = state;
 			this.masterAddress = masterAddress;
-			
+			this.routeMeta = routeMeta;
 		}
 
-		
+		public KeeperSetStateCommand(KeeperMeta keeperMeta,
+									 KeeperState state,
+									 Pair<String, Integer> masterAddress,
+									 ScheduledExecutorService scheduled) {
+			this(keeperMeta, state, masterAddress, null, scheduled);
+		}
+
+		public KeeperSetStateCommand(KeeperMeta keeperMeta,
+									 KeeperState state,
+									 Pair<String, Integer> masterAddress,
+									 RouteMeta routeMeta,
+									 ScheduledExecutorService scheduled) {
+			super(keeperMeta, scheduled);
+			this.state = state;
+			this.masterAddress = masterAddress;
+			this.routeMeta = routeMeta;
+		}
+
+
 		@Override
 		protected String format(Object payload) {
 			
@@ -83,14 +108,20 @@ public abstract class AbstractKeeperCommand<T> extends AbstractRedisCommand<T> {
 		}
 
 		@Override
-		protected ByteBuf getRequest() {
-			return new RequestStringParser(getName(), SET_STATE, state.toString(), masterAddress.getHostName(), String.valueOf(masterAddress.getPort())).format();
+		public ByteBuf getRequest() {
+			return new RequestStringParser(
+					getName(),
+					SET_STATE,
+					state.toString(),
+					masterAddress.getKey(), String.valueOf(masterAddress.getValue()),
+					routeMeta == null?"":(routeMeta.routeProtocol() + " " + ProxyEndpoint.PROXY_SCHEME.TCP.name())
+			).format();
 		}
 		
 		
 		@Override
 		public String toString() {
-			return String.format("%s %s %s %s", getName(), SET_STATE, state.toString(), masterAddress.toString());
+			return String.format("(to:%s) %s %s %s %s %s", getClientPool().desc(), getName(), SET_STATE, state.toString(), masterAddress.getKey(), masterAddress.getValue());
 		}
 	}
 }

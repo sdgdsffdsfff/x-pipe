@@ -1,13 +1,14 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-
+import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.redis.core.meta.KeeperState;
+import com.ctrip.xpipe.redis.core.protocal.error.NoMasterlinkRedisError;
 import com.ctrip.xpipe.redis.keeper.RedisClient;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer.PROMOTION_STATE;
+
+import java.io.IOException;
 
 /**
  * @author wenchao.meng
@@ -22,17 +23,17 @@ public class RedisKeeperServerStatePreActive extends AbstractRedisKeeperServerSt
 	}
 
 	@Override
-	public void becomeActive(InetSocketAddress masterAddress) {
+	public void becomeActive(Endpoint masterAddress) {
+		
 		logger.info("[becomeActive]{}", masterAddress);
-		redisKeeperServer.setRedisKeeperServerState(new RedisKeeperServerStateActive(redisKeeperServer, masterAddress));
-		reconnectMaster();
+		doBecomeActive(masterAddress);
 	}
 
 	@Override
-	public void becomeBackup(InetSocketAddress masterAddress) throws IOException {
+	public void becomeBackup(Endpoint masterAddress){
 		
 		logger.info("[becomeBackup]{}", masterAddress);
-		activeToBackup(masterAddress);
+		doBecomeBackup(masterAddress);
 	}
 
 	@Override
@@ -41,8 +42,8 @@ public class RedisKeeperServerStatePreActive extends AbstractRedisKeeperServerSt
 	}
 
 	@Override
-	public boolean psync(RedisClient redisClient, String[] args) {
-		throw new UnsupportedOperationException();
+	public boolean psync(RedisClient redisClient, String[] args) throws Exception {
+		throw new NoMasterlinkRedisError("keeper state :" + keeperState());
 	}
 
 	@Override

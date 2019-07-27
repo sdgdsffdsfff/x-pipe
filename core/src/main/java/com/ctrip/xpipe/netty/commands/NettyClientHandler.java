@@ -1,10 +1,9 @@
 package com.ctrip.xpipe.netty.commands;
 
 
-import com.ctrip.xpipe.exception.XpipeException;
 import com.ctrip.xpipe.netty.AbstractNettyHandler;
 import com.ctrip.xpipe.netty.ByteBufReadAction;
-
+import com.ctrip.xpipe.netty.ByteBufReadActionException;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -20,8 +19,6 @@ public class NettyClientHandler extends AbstractNettyHandler{
 	
 	public static final AttributeKey<NettyClient> KEY_CLIENT = AttributeKey.newInstance(NettyClientHandler.class.getSimpleName() + "_REDIS_CLIENTS");
 	
-	
-
 	public static boolean bind(Channel channel, NettyClient nettyClient){
 		
 		Attribute<NettyClient> attribute = channel.attr(KEY_CLIENT);
@@ -48,7 +45,7 @@ public class NettyClientHandler extends AbstractNettyHandler{
 		byteBufReadPolicy.read(ctx.channel(), byteBuf, new ByteBufReadAction() {
 			
 			@Override
-			public void read(Channel channel, ByteBuf byteBuf) throws XpipeException {
+			public void read(Channel channel, ByteBuf byteBuf) throws ByteBufReadActionException {
 				nettyClient.handleResponse(channel, byteBuf);
 			}
 		});

@@ -1,46 +1,34 @@
 package com.ctrip.xpipe.redis.meta.server.service.console;
 
 import com.ctrip.xpipe.redis.core.console.ConsoleService;
-import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
-import com.ctrip.xpipe.redis.core.entity.DcMeta;
-import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
-import com.ctrip.xpipe.redis.core.entity.RedisMeta;
-import com.ctrip.xpipe.redis.core.entity.ShardMeta;
+import com.ctrip.xpipe.redis.core.entity.*;
+import com.ctrip.xpipe.redis.core.service.AbstractService;
 import com.ctrip.xpipe.redis.meta.server.config.MetaServerConfig;
-import com.ctrip.xpipe.spring.RestTemplateFactory;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
+import javax.annotation.PostConstruct;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-
-import javax.annotation.PostConstruct;
 
 /**
  * @author zhangle
  *
  */
 @Service
-public class ConsoleServiceImpl implements ConsoleService {
+public class ConsoleServiceImpl extends AbstractService implements ConsoleService {
 
 	@Autowired
 	private MetaServerConfig config;
-	
-	private Logger logger = LoggerFactory.getLogger(getClass());
 
-	private RestTemplate restTemplate = RestTemplateFactory.createCommonsHttpRestTemplate();
 	private String host;
 
 	@PostConstruct
 	public void init(){
 		host = config.getConsoleAddress();
-		logger.info("[init][console address]{}", host);
+		logger.debug("[init][console address]{}", host);
 	}
 
 	@Override
@@ -88,16 +76,17 @@ public class ConsoleServiceImpl implements ConsoleService {
 	}
 
 	@Override
-	public void keeperActiveChanged(String dc, String clusterId, String shardId, KeeperMeta newActiveKeeper)
-		throws Exception {
+	public void keeperActiveChanged(String dc, String clusterId, String shardId, KeeperMeta newActiveKeeper) {
+		restTemplate.put(host + "/api/dc/{dcId}/cluster/{clusterId}/shard/{shardId}/keepers/adjustment", newActiveKeeper, dc, clusterId, shardId);
 
 	}
 
 	@Override
-	public void redisMasterChanged(String dc, String clusterId, String shardId, RedisMeta newRedisMaster)
-		throws Exception {
+	public void redisMasterChanged(String dc, String clusterId, String shardId, RedisMeta newRedisMaster) {
 
 	}
 
-
+	public void setHost(String host) {
+		this.host = host;
+	}
 }

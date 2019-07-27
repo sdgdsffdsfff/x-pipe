@@ -1,19 +1,14 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
-
-
-import java.net.InetSocketAddress;
-
+import com.ctrip.xpipe.endpoint.DefaultEndPoint;
+import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
+import com.ctrip.xpipe.redis.core.meta.ShardStatus;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
-import com.ctrip.xpipe.redis.core.meta.ShardStatus;
-
-
-
+import java.net.InetSocketAddress;
 
 /**
  * @author wenchao.meng
@@ -45,19 +40,13 @@ public class RedisKeeperServerStateBackupTest extends AbstractRedisKeeperServerS
 	@Test
 	public void testBackupActive(){
 
-		try{
-			backup.becomeActive(new InetSocketAddress("localhost", randomPort()));
-			Assert.fail();
-		}catch(Exception e){
-			e.printStackTrace();
-		}
-				
+		backup.becomeActive(new DefaultEndPoint("localhost", randomPort()));
 	}
 
 	@Test
 	public void testBackupBackup(){
 		
-		backup.becomeBackup(new InetSocketAddress("localhost", randomPort()));
+		backup.becomeBackup(new DefaultEndPoint("localhost", randomPort()));
 	}
 
 	@After

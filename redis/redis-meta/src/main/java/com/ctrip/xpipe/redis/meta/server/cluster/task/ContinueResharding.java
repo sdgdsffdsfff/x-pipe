@@ -1,16 +1,11 @@
 package com.ctrip.xpipe.redis.meta.server.cluster.task;
 
 
+import com.ctrip.xpipe.redis.meta.server.cluster.*;
+import com.ctrip.xpipe.zk.ZkClient;
+
 import java.util.Map;
 import java.util.Map.Entry;
-
-import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServer;
-import com.ctrip.xpipe.redis.meta.server.cluster.ClusterServers;
-import com.ctrip.xpipe.redis.meta.server.cluster.RemoteClusterServerFactory;
-import com.ctrip.xpipe.redis.meta.server.cluster.SLOT_STATE;
-import com.ctrip.xpipe.redis.meta.server.cluster.SlotInfo;
-import com.ctrip.xpipe.redis.meta.server.cluster.SlotManager;
-import com.ctrip.xpipe.zk.ZkClient;
 
 /**
  * restart, do with unfinished tasks
@@ -31,7 +26,7 @@ public class ContinueResharding extends AbstractResharding{
 	}
 
 	@Override
-	protected void doShardingTask() throws Exception {
+	protected void doShardingTask() throws ShardingException {
 		
 		logger.info("[doShardingTask]{}", slotInfos);
 		
@@ -46,14 +41,16 @@ public class ContinueResharding extends AbstractResharding{
 			}
 			
 			ClusterServer from = servers.getClusterServer(slotInfo.getServerId());
-			if(from == null){
-				from = remoteClusterServerFactory.createClusterServer(slotInfo.getServerId(), null);
-			}
 			ClusterServer to = servers.getClusterServer(slotInfo.getToServerId());
-			if(to == null){
-				to = remoteClusterServerFactory.createClusterServer(slotInfo.getToServerId(), null);
+			if(to != null){
+				if(from != null){
+					executeTask(new MoveSlotFromLiving(slot, from, to, zkClient));
+				}else{
+					executeTask(new MoveSlotFromDeadOrEmpty(slot, remoteClusterServerFactory.createClusterServer(slotInfo.getServerId(), null), to, zkClient));
+				}
+			}else{
+				executeTask(new RollbackMovingTask(slot, from, to, zkClient));
 			}
-			executeTask(new MoveSlotFromLiving(slot, from, to, zkClient));
 		}
 	}
 

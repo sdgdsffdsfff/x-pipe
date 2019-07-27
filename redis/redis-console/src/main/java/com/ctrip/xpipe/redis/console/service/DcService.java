@@ -1,92 +1,22 @@
 package com.ctrip.xpipe.redis.console.service;
 
 import com.ctrip.xpipe.redis.console.model.DcTbl;
-import com.ctrip.xpipe.redis.console.model.DcTblDao;
-import com.ctrip.xpipe.redis.console.model.DcTblEntity;
-import com.ctrip.xpipe.redis.console.query.DalQuery;
+import com.ctrip.xpipe.redis.console.model.consoleportal.DcListDcModel;
 
-import org.springframework.stereotype.Service;
-import org.unidal.dal.jdbc.DalException;
 import java.util.List;
+import java.util.Map;
 
-/**
- * @author shyin
- *
- * Aug 20, 2016
- */
-@Service
-public class DcService extends AbstractConsoleService<DcTblDao>{
-   
-    public DcTbl load(final String dcName) {
-    	return queryHandler.handleQuery(new DalQuery<DcTbl>() {
-			@Override
-			public DcTbl doQuery() throws DalException {
-				return dao.findDcByDcName(dcName, DcTblEntity.READSET_FULL);
-			}
-    	});
-    }
+public interface DcService {
+	DcTbl find(String dcName);
+	DcTbl find(long dcId);
+	String getDcName(long dcId);
+	List<DcTbl> findAllDcs();
+	List<DcTbl> findAllDcNames();
+	List<DcTbl> findAllDcBasic();
+	List<DcTbl> findClusterRelatedDc(String clusterName);
+	DcTbl findByDcName(String activeDcName);
+	Map<Long, String> dcNameMap();
+	List<DcListDcModel> findAllDcsRichInfo();
 
-    public DcTbl load(final long dcId) {
-    	return queryHandler.handleQuery(new DalQuery<DcTbl>(){
-			@Override
-			public DcTbl doQuery() throws DalException {
-				return dao.findByPK(dcId, DcTblEntity.READSET_FULL);
-			}
-    	});
-    }
-
-    public List<DcTbl> findAllDcs() {
-    	return queryHandler.handleQuery(new DalQuery<List<DcTbl>>() {
-			@Override
-			public List<DcTbl> doQuery() throws DalException {
-				return dao.findAllDcs(DcTblEntity.READSET_FULL);
-			}
-    	});
-    }
-    
-    public List<DcTbl> findAllDcNames() {
-    	return queryHandler.handleQuery(new DalQuery<List<DcTbl>>() {
-			@Override
-			public List<DcTbl> doQuery() throws DalException {
-				return dao.findAllDcs(DcTblEntity.READSET_NAME);
-			}
-    	});
-    }
-    
-    public List<DcTbl> findAllDcBasic() {
-    	return queryHandler.handleQuery(new DalQuery<List<DcTbl>>() {
-			@Override
-			public List<DcTbl> doQuery() throws DalException {
-				return dao.findAllDcs(DcTblEntity.READSET_BASIC);
-			}
-    	});
-    }
-
-    public List<DcTbl> findClusterRelatedDc(final String clusterName) {
-    	return queryHandler.handleQuery(new DalQuery<List<DcTbl>>() {
-			@Override
-			public List<DcTbl> doQuery() throws DalException {
-				return dao.findClusterRelatedDc(clusterName, DcTblEntity.READSET_FULL);
-			}
-    	});
-    }
-    
-    public List<DcTbl> findAllDetails(final String dcName) {
-    	return queryHandler.handleQuery(new DalQuery<List<DcTbl>>() {
-			@Override
-			public List<DcTbl> doQuery() throws DalException {
-				return dao.findDcDetailsByDcName(dcName, DcTblEntity.READSET_FULL_ALL);
-			}
-    	});
-    }
-    
-    public List<DcTbl> findAllActiveKeepers() {
-    	return queryHandler.handleQuery(new DalQuery<List<DcTbl>>() {
-			@Override
-			public List<DcTbl> doQuery() throws DalException {
-				return dao.findAllActiveKeeper(DcTblEntity.READSET_FULL_ALL);
-			}
-    	});
-    }
-
+	void insertWithPartField(long zoneId, String dcName, String description);
 }

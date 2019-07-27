@@ -1,12 +1,15 @@
 package com.ctrip.xpipe.redis.core.store;
 
+import com.ctrip.xpipe.netty.filechannel.ReferenceFileRegion;
+
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 public interface CommandReader {
 
 	void close() throws IOException;
 
-	int read(ByteBuffer dst) throws IOException;
+	ReferenceFileRegion read() throws IOException;
+
+	void flushed(ReferenceFileRegion referenceFileRegion);
 
 }

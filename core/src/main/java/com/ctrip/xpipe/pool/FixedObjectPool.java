@@ -1,9 +1,9 @@
 package com.ctrip.xpipe.pool;
 
+import com.ctrip.xpipe.api.pool.SimpleObjectPool;
+
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
-
-import com.ctrip.xpipe.api.pool.SimpleObjectPool;
 
 /**
  * @author wenchao.meng
@@ -49,6 +49,11 @@ public class FixedObjectPool<T> implements SimpleObjectPool<T>{
 	@Override
 	public void clear() {
 		semaphore = new Semaphore(permits);		
+	}
+
+	@Override
+	public String desc() {
+		return objRef.get().toString();
 	}
 
 }

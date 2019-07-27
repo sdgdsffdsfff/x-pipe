@@ -1,13 +1,12 @@
 package com.ctrip.xpipe.retry;
 
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
+import com.ctrip.xpipe.api.retry.RetryPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.ctrip.xpipe.api.retry.RetryPolicy;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author wenchao.meng
@@ -33,7 +32,7 @@ public abstract class AbstractRetryPolicy implements RetryPolicy{
 	}
 
 	@Override
-	public boolean retry(Exception e) {
+	public boolean retry(Throwable th) {
 		return true;
 	}
 	
@@ -68,4 +67,10 @@ public abstract class AbstractRetryPolicy implements RetryPolicy{
 	
 	protected abstract int getSleepTime(int currentRetryTime);
 
+	
+	@Override
+	public boolean timeoutCancel() {
+		return false;
+	}
+	
 }

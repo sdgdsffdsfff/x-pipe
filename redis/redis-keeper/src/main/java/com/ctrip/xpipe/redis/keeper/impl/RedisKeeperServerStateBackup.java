@@ -1,22 +1,20 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
-
-
-import java.io.IOException;
-import java.net.InetSocketAddress;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.api.lifecycle.Releasable;
 import com.ctrip.xpipe.api.observer.Observable;
 import com.ctrip.xpipe.api.observer.Observer;
+import com.ctrip.xpipe.concurrent.AbstractExceptionLogTask;
 import com.ctrip.xpipe.redis.core.meta.KeeperState;
 import com.ctrip.xpipe.redis.core.protocal.RedisProtocol;
 import com.ctrip.xpipe.redis.keeper.RedisClient;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer.PROMOTION_STATE;
 import com.ctrip.xpipe.redis.keeper.handler.PsyncHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 
 /**
  * @author wenchao.meng
@@ -29,22 +27,22 @@ public class RedisKeeperServerStateBackup extends AbstractRedisKeeperServerState
 		super(redisKeeperServer);
 	}
 	
-	public RedisKeeperServerStateBackup(RedisKeeperServer redisKeeperServer, InetSocketAddress masterAddress) {
+	public RedisKeeperServerStateBackup(RedisKeeperServer redisKeeperServer, Endpoint masterAddress) {
 		super(redisKeeperServer, masterAddress);
 	}
 
 
 
 	@Override
-	public void becomeBackup(InetSocketAddress masterAddress) {
+	public void becomeBackup(Endpoint masterAddress) {
 		setMasterAddress(masterAddress);
 	}
 
 	@Override
-	public void becomeActive(InetSocketAddress masterAddress) throws IOException {
+	public void becomeActive(Endpoint masterAddress) {
 		
 		logger.info("[becomeActive]{}", masterAddress);
-		backupToActive(masterAddress);
+		doBecomeActive(masterAddress);
 	}
 
 	@Override
@@ -58,20 +56,34 @@ public class RedisKeeperServerStateBackup extends AbstractRedisKeeperServerState
 		throw new IllegalStateException("state backup, promotion unsupported!");
 	}
 
-	
 	@Override
-	public boolean sendKinfo() {
-		return true;
-	}
-
-	@Override
-	public boolean psync(RedisClient redisClient, String []args) {
+	public boolean psync(final RedisClient redisClient, final String []args) throws Exception {
 		
 		logger.info("[psync][server state backup, ask slave to wait]{}, {}", redisClient, this);
 		
-		redisClient.sendMessage(RedisProtocol.CRLF.getBytes());
-		redisKeeperServer.addObserver(new PsyncKeeperServerStateObserver(args, redisClient));
-		return false;
+		if(redisKeeperServer.compareAndDo(this, new AbstractExceptionLogTask() {
+			@Override
+			protected void doRun() throws Exception {
+				
+				redisClient.sendMessage(RedisProtocol.CRLF.getBytes());
+				PsyncKeeperServerStateObserver psyncKeeperServerStateObserver = new PsyncKeeperServerStateObserver(args, redisClient);
+				
+				redisKeeperServer.addObserver(psyncKeeperServerStateObserver);
+				redisClient.addChannelCloseReleaseResources(new Releasable() {
+					
+					@Override
+					public void release() throws Exception {
+						psyncKeeperServerStateObserver.release();
+					}
+				});
+				
+			}})){
+			//state backup
+			return false;
+		}
+		
+		logger.info("[psync][state change, use new state to psync]{}, {}", redisClient, redisKeeperServer);
+		return redisKeeperServer.getRedisKeeperServerState().psync(redisClient, args);
 	}
 	
 	public static class PsyncKeeperServerStateObserver implements Observer, Releasable{
@@ -79,6 +91,7 @@ public class RedisKeeperServerStateBackup extends AbstractRedisKeeperServerState
 		private static Logger logger = LoggerFactory.getLogger(PsyncKeeperServerStateObserver.class);
 		
 		private String []args;
+		
 		private RedisClient redisClient;
 		
 		public PsyncKeeperServerStateObserver(String []args, RedisClient redisClient) {
@@ -93,17 +106,29 @@ public class RedisKeeperServerStateBackup extends AbstractRedisKeeperServerState
 			logger.info("[update]{},{},{}", redisClient, updateArgs, observable);
 			
 			if(updateArgs instanceof KeeperServerStateChanged){
-				new PsyncHandler().handle(args, redisClient);
+				
 				try {
-					release();
+					new PsyncHandler().handle(args, redisClient);
 				} catch (Exception e) {
 					logger.error("[update]" + updateArgs+ "," + observable + "," + redisClient, e);
+					try {
+						redisClient.close();
+					} catch (IOException e1) {
+						logger.error("[update][closeclient]" + redisClient, e);
+					}
+				}finally{
+					try {
+						release();
+					} catch (Exception e) {
+						logger.error("[update][release]" + updateArgs+ "," + observable + "," + redisClient, e);
+					}
 				}
 			}
 		}
 
 		@Override
 		public void release() throws Exception {
+			logger.info("[release]{}", this);
 			this.redisClient.getRedisKeeperServer().removeObserver(this);
 		}
 	}

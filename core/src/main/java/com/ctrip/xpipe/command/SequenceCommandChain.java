@@ -26,7 +26,9 @@ public class SequenceCommandChain extends AbstractCommandChain{
 		this.failContinue = failContinue;
 	}
 	@Override
-	protected void doExecute() {
+	protected void doExecute() throws Exception {
+		super.doExecute();
+		
 		executeChain();
 	}
 	
@@ -66,7 +68,7 @@ public class SequenceCommandChain extends AbstractCommandChain{
 			return;
 		}
 		
-		future().setFailure(new CommandChainException("execute count:" + (executeCount()), getResult()));
+		future().setFailure(new CommandChainException("sequence chain, fail stop", getResult()));
 	}
 
 }

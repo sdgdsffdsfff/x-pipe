@@ -1,8 +1,6 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-
+import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
 import com.ctrip.xpipe.redis.core.entity.RedisMeta;
 import com.ctrip.xpipe.redis.core.meta.KeeperState;
@@ -11,6 +9,9 @@ import com.ctrip.xpipe.redis.keeper.RedisClient;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
 import com.ctrip.xpipe.redis.keeper.RedisKeeperServer.PROMOTION_STATE;
 import com.ctrip.xpipe.redis.keeper.impl.RedisPromotor.SlavePromotionInfo;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
 
 /**
  * @author wenchao.meng
@@ -25,19 +26,19 @@ public class RedisKeeperServerStateActive extends AbstractRedisKeeperServerState
 		super(redisKeeperServer);
 	}
 	
-	public RedisKeeperServerStateActive(RedisKeeperServer redisKeeperServer, InetSocketAddress masterAddress) {
+	public RedisKeeperServerStateActive(RedisKeeperServer redisKeeperServer, Endpoint masterAddress) {
 		super(redisKeeperServer, masterAddress);
 	}
 
 	@Override
-	public void becomeBackup(InetSocketAddress masterAddress) throws IOException {
+	public void becomeBackup(Endpoint masterAddress){
 		
 		logger.info("[becomeBackup]{}", masterAddress);
-		activeToBackup(masterAddress);
+		doBecomeBackup(masterAddress);
 	}
 
 	@Override
-	public void becomeActive(InetSocketAddress masterAddress) {
+	public void becomeActive(Endpoint masterAddress) {
 		
 		setMasterAddress(masterAddress);
 	}
@@ -65,14 +66,14 @@ public class RedisKeeperServerStateActive extends AbstractRedisKeeperServerState
 				break;
 			case SLAVE_PROMTED:
 				
-				InetSocketAddress newMasterAddress = null;
+				Endpoint newMasterAddress = null;
 				if(info instanceof SlavePromotionInfo){
 					SlavePromotionInfo promotionInfo = (SlavePromotionInfo) info;
 					RedisMeta newMaster = masterChanged(promotionInfo.getKeeperOffset(), promotionInfo.getNewMasterEndpoint()
 								, promotionInfo.getNewMasterRunid(), promotionInfo.getNewMasterReplOffset());
-					newMasterAddress = new InetSocketAddress(newMaster.getIp(), newMaster.getPort());
+					newMasterAddress = new DefaultEndPoint(newMaster.getIp(), newMaster.getPort());
 				}else if (info instanceof InetSocketAddress){
-					newMasterAddress = (InetSocketAddress) info;
+					newMasterAddress = new DefaultEndPoint((InetSocketAddress) info);
 				}else{
 					throw new IllegalStateException("unknown info:" + info);
 				}
@@ -86,6 +87,7 @@ public class RedisKeeperServerStateActive extends AbstractRedisKeeperServerState
 		}
 	}
 	
+	@SuppressWarnings("deprecation")
 	public RedisMeta masterChanged(long keeperOffset, DefaultEndPoint newMasterEndpoint, String newMasterRunid, long newMasterReplOffset) throws IOException {
 		
 		ReplicationStore replicationStore = redisKeeperServer.getReplicationStore();
@@ -123,4 +125,9 @@ public class RedisKeeperServerStateActive extends AbstractRedisKeeperServerState
 		return KeeperState.ACTIVE;
 	}
 
+
+	@Override
+	public boolean handleSlaveOf() {
+		return true;
+	}
 }

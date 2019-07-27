@@ -1,21 +1,9 @@
 package com.ctrip.xpipe.redis.meta.server.meta.impl;
 
-
-import java.net.InetSocketAddress;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-import org.unidal.tuple.Pair;
-
+import com.ctrip.xpipe.api.lifecycle.Releasable;
 import com.ctrip.xpipe.api.observer.Observable;
 import com.ctrip.xpipe.api.observer.Observer;
+import com.ctrip.xpipe.codec.JsonCodec;
 import com.ctrip.xpipe.concurrent.AbstractExceptionLogTask;
 import com.ctrip.xpipe.observer.AbstractLifecycleObservable;
 import com.ctrip.xpipe.observer.NodeAdded;
@@ -23,18 +11,31 @@ import com.ctrip.xpipe.observer.NodeDeleted;
 import com.ctrip.xpipe.redis.core.entity.ClusterMeta;
 import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
 import com.ctrip.xpipe.redis.core.entity.RedisMeta;
+import com.ctrip.xpipe.redis.core.entity.RouteMeta;
 import com.ctrip.xpipe.redis.core.meta.MetaComparator;
 import com.ctrip.xpipe.redis.core.meta.comparator.ClusterMetaComparator;
 import com.ctrip.xpipe.redis.core.meta.comparator.DcMetaComparator;
-import com.ctrip.xpipe.redis.core.meta.comparator.ShardMetaComparator.ShardUpstreamChanged;
+import com.ctrip.xpipe.redis.core.meta.comparator.DcRouteMetaComparator;
 import com.ctrip.xpipe.redis.meta.server.MetaServerStateChangeHandler;
 import com.ctrip.xpipe.redis.meta.server.cluster.CurrentClusterServer;
 import com.ctrip.xpipe.redis.meta.server.cluster.SlotManager;
 import com.ctrip.xpipe.redis.meta.server.meta.CurrentMeta;
 import com.ctrip.xpipe.redis.meta.server.meta.CurrentMetaManager;
 import com.ctrip.xpipe.redis.meta.server.meta.DcMetaCache;
+import com.ctrip.xpipe.spring.AbstractSpringConfigContext;
+import com.ctrip.xpipe.tuple.Pair;
 import com.ctrip.xpipe.utils.IpUtils;
-import com.ctrip.xpipe.utils.XpipeThreadFactory;
+import com.ctrip.xpipe.utils.VisibleForTesting;
+import com.google.common.collect.Lists;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.Resource;
+import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author wenchao.meng
@@ -44,7 +45,7 @@ import com.ctrip.xpipe.utils.XpipeThreadFactory;
 @Component
 public class DefaultCurrentMetaManager extends AbstractLifecycleObservable implements CurrentMetaManager, Observer{
 	
-	private int slotCheckInterval = 60000;
+	private int slotCheckInterval = 60;
 	
 	@Autowired
 	private SlotManager slotManager;
@@ -55,23 +56,32 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 	@Autowired
 	private DcMetaCache dcMetaCache;
 	
-	private CurrentMeta currentMeta = new CurrentMeta();;
+	private CurrentMeta currentMeta = new CurrentMeta();
 	
 	private Set<Integer>   currentSlots = new HashSet<>();
-	
+
+	@Resource(name = AbstractSpringConfigContext.SCHEDULED_EXECUTOR)
 	private ScheduledExecutorService scheduled;
+
 	private ScheduledFuture<?> 		slotCheckFuture;
 	
 	@Autowired
 	private List<MetaServerStateChangeHandler> stateHandlers;
+
+	@Resource(name = AbstractSpringConfigContext.GLOBAL_EXECUTOR)
+	private Executor executors;
+
+	public DefaultCurrentMetaManager() {
+	}
 	
 	@Override
 	protected void doInitialize() throws Exception {
 		super.doInitialize();
 
-		logger.info("[doInitialize]{}", stateHandlers);
+		setExecutors(executors);
+
+		logger.info("[doInitialize]{}, {}", stateHandlers, currentClusterServer.getServerId());
 		dcMetaCache.addObserver(this);
-		scheduled = Executors.newScheduledThreadPool(2, XpipeThreadFactory.create(String.format("CURRENT_META_MANAGER(%d)", currentClusterServer.getServerId())));
 	}
 	
 	@Override
@@ -91,10 +101,15 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 			}
 		}, slotCheckInterval, slotCheckInterval, TimeUnit.SECONDS);
 	}
+	
+	@Override
+	public synchronized void addObserver(Observer observer) {
+		logger.info("[addObserver]{}", observer);
+		super.addObserver(observer);
+	}
 
 	
 	protected void checkAddOrRemoveSlots() {
-		
 		
 		Set<Integer> slots = slotManager.getSlotsByServerId(currentClusterServer.getServerId(), false);
 		
@@ -140,8 +155,8 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 	
 	@Override
 	protected void doDispose() throws Exception {
-		
-		scheduled.shutdownNow();
+
+		currentMeta.release();
 		super.doDispose();
 	}
 	
@@ -242,20 +257,17 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 		if(args instanceof DcMetaComparator){
 			
 			dcMetaChange((DcMetaComparator)args);
-		}else if(args instanceof ShardUpstreamChanged){
-			ShardUpstreamChanged shardUpstreamChanged = (ShardUpstreamChanged) args;
-			logger.info("[update]{}", shardUpstreamChanged);
-			if(currentClusterServer.hasKey(shardUpstreamChanged.getClusterId())){
-				notifyObservers(shardUpstreamChanged);
-			}else{
-				logger.info("[update][upstream change, not interested]{}", shardUpstreamChanged);
-			}
-		}else{
+		} else if(args instanceof DcRouteMetaComparator) {
+
+			routeChanges();
+		} else{
+			
 			throw new IllegalArgumentException(String.format("unknown args(%s):%s", args.getClass(), args));
 		}
 	}
 
-	private void dcMetaChange(DcMetaComparator comparator) {
+	@VisibleForTesting
+	protected void dcMetaChange(DcMetaComparator comparator) {
 		
 		for(ClusterMeta clusterMeta : comparator.getAdded()){
 			if(currentClusterServer.hasKey(clusterMeta.getId())){
@@ -285,6 +297,25 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 		}
 	}
 
+	@VisibleForTesting
+	protected void routeChanges() {
+		for(String clusterId : allClusters()) {
+			if(randomRoute(clusterId) != null) {
+				ClusterMeta clusterMeta = dcMetaCache.getClusterMeta(clusterId);
+				refreshKeeperMaster(clusterMeta);
+			}
+		}
+	}
+
+	@VisibleForTesting
+	protected void refreshKeeperMaster(ClusterMeta clusterMeta) {
+		Set<String> shards = clusterMeta.getShards().keySet();
+		String clusterId = clusterMeta.getId();
+		for (String shardId : shards) {
+			notifyKeeperMasterChanged(clusterId, shardId, getKeeperMaster(clusterId, shardId));
+		}
+	}
+
 	
 	@Override
 	public boolean hasCluster(String clusterId) {
@@ -301,27 +332,22 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 		return ((DefaultDcMetaCache)dcMetaCache).getDcMeta().getRedisMaster(clusterId, shardId);
 	}
 
-
-	@Override
-	public String getUpstream(String clusterId, String shardId) {
-		return ((DefaultDcMetaCache)dcMetaCache).getDcMeta().getUpstream(clusterId, shardId);
-	}
-
-
-	@Override
-	public List<KeeperMeta> getKeepers(String clusterId, String shardId) {
-		return ((DefaultDcMetaCache)dcMetaCache).getDcMeta().getKeepers(clusterId, shardId);
-	}
-
 	@Override
 	public ClusterMeta getClusterMeta(String clusterId) {
 		return dcMetaCache.getClusterMeta(clusterId);
 	}
 
 	@Override
-	public InetSocketAddress getKeeperMaster(String clusterId, String shardId) {
+	public RouteMeta randomRoute(String clusterId) {
+		return dcMetaCache.randomRoute(clusterId);
+	}
+
+
+	@Override
+	public Pair<String, Integer> getKeeperMaster(String clusterId, String shardId) {
 		return currentMeta.getKeeperMaster(clusterId, shardId);
 	}
+
 
 	@Override
 	public List<KeeperMeta> getSurviveKeepers(String clusterId, String shardId) {
@@ -335,7 +361,16 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 	
 	@Override
 	public String getCurrentMetaDesc() {
-		return currentMeta.toString();
+	
+		Map<String, Object> desc = new HashMap<>();
+		desc.put("meta", currentMeta);
+		desc.put("currentSlots", currentSlots);
+		JsonCodec codec = new JsonCodec(true, true);
+		return codec.encode(desc);
+	}
+	
+	protected Set<Integer> getCurrentSlots() {
+		return currentSlots;
 	}
 	
 	
@@ -346,6 +381,12 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 		notifyKeeperActiveElected(clusterId, shardId, activeKeeper);
 		return result;
 	}
+	
+	@Override
+	public void addResource(String clusterId, String shardId, Releasable releasable) {
+		currentMeta.addResource(clusterId, shardId, releasable);
+	}
+
 
 	@Override
 	public void setSurviveKeepers(String clusterId, String shardId, List<KeeperMeta> surviceKeepers, KeeperMeta activeKeeper) {
@@ -354,11 +395,25 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 	}
 
 	@Override
+	public void setKeeperMaster(String clusterId, String shardId, String ip, int port) {
+		
+		
+		Pair<String, Integer> keeperMaster = new Pair<String, Integer>(ip, port);
+		if(currentMeta.setKeeperMaster(clusterId, shardId, keeperMaster)){
+			logger.info("[setKeeperMaster]{},{},{}:{}", clusterId, shardId, ip, port);
+			notifyKeeperMasterChanged(clusterId, shardId, keeperMaster);
+		}else{
+			logger.info("[setKeeperMaster][keeper master not changed!]{},{},{}:{}", clusterId, shardId, ip, port);
+		}
+		
+	}
+
+	@Override
 	public void setKeeperMaster(String clusterId, String shardId, String addr) {
 		
-		InetSocketAddress inetAddr = IpUtils.parseSingle(addr);
-		currentMeta.setKeeperMaster(clusterId, shardId, inetAddr);
-		notifyKeeperMasterChanged(clusterId, shardId, inetAddr);
+		logger.info("[setKeeperMaster]{},{},{}", clusterId, shardId, addr);
+		Pair<String, Integer> inetAddr = IpUtils.parseSingleAsPair(addr);
+		setKeeperMaster(clusterId, shardId, inetAddr.getKey(), inetAddr.getValue());
 	}
 
 	@Override
@@ -377,13 +432,30 @@ public class DefaultCurrentMetaManager extends AbstractLifecycleObservable imple
 		}
 	}
 
-	private void notifyKeeperMasterChanged(String clusterId, String shardId, InetSocketAddress inetAddr) {
+	private void notifyKeeperMasterChanged(String clusterId, String shardId, Pair<String, Integer> keeperMaster) {
 		for(MetaServerStateChangeHandler stateHandler : stateHandlers){
 			try {
-				stateHandler.keeperMasterChanged(clusterId, shardId, inetAddr);
+				stateHandler.keeperMasterChanged(clusterId, shardId, keeperMaster);
 			} catch (Exception e) {
-				logger.error("[notifyKeeperMasterChanged]" + clusterId + "," + shardId + "," + inetAddr, e);
+				logger.error("[notifyKeeperMasterChanged]" + clusterId + "," + shardId + "," + keeperMaster, e);
 			}
 		}
+	}
+	
+	
+	public void setSlotManager(SlotManager slotManager) {
+		this.slotManager = slotManager;
+	}
+	
+	public void setDcMetaCache(DcMetaCache dcMetaCache) {
+		this.dcMetaCache = dcMetaCache;
+	}
+
+	@VisibleForTesting
+	protected void addMetaServerStateChangeHandler(MetaServerStateChangeHandler handler) {
+		if(stateHandlers == null) {
+			stateHandlers = Lists.newArrayList();
+		}
+		stateHandlers.add(handler);
 	}
 }

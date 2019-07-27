@@ -1,12 +1,11 @@
 package com.ctrip.xpipe.redis.meta.server.cluster.impl;
 
+import com.ctrip.xpipe.redis.core.meta.MetaZkConfig;
+import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerContextTest;
 import org.apache.zookeeper.data.Stat;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-
-import com.ctrip.xpipe.redis.core.meta.MetaZkConfig;
-import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerContextTest;
 
 
 /**
@@ -16,11 +15,10 @@ import com.ctrip.xpipe.redis.meta.server.AbstractMetaServerContextTest;
  */
 public class DefaultCurrentClusterServerTest extends AbstractMetaServerContextTest{
 	
-	DefaultCurrentClusterServer currentServer;
+	private DefaultCurrentClusterServer currentServer;
 	
 	@Before
 	public void beforeDefaultCurrentClusterServerTest() throws Exception{
-		
 		
 		currentServer = new DefaultCurrentClusterServer();
 		currentServer.setConfig(config);
@@ -36,11 +34,13 @@ public class DefaultCurrentClusterServerTest extends AbstractMetaServerContextTe
 		
 		currentServer.initialize();
 		currentServer.start();
-		sleep(100);
+		sleep(150);
+		logger.info("[testStartStop][check exists]");
 		Stat stat = getCurator().checkExists().forPath(MetaZkConfig.getMetaServerRegisterPath() + "/" + config.getMetaServerId());
 		Assert.assertNotNull(stat);
 		
 		currentServer.stop();
+		logger.info("[testStartStop][check not exists]");
 		stat = getCurator().checkExists().forPath(MetaZkConfig.getMetaServerRegisterPath() + "/" + config.getMetaServerId());
 		Assert.assertNull(stat);
 		

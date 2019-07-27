@@ -1,16 +1,20 @@
 package com.ctrip.xpipe.redis.meta.server.spring;
 
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 
 import com.ctrip.xpipe.lifecycle.SpringComponentLifecycleManager;
 import com.ctrip.xpipe.redis.meta.server.config.DefaultMetaServerConfig;
 import com.ctrip.xpipe.redis.meta.server.config.MetaServerConfig;
 import com.ctrip.xpipe.redis.meta.server.job.ConsoleNotifycationTask;
+import com.ctrip.xpipe.redis.meta.server.keeper.KeeperStateController;
+import com.ctrip.xpipe.redis.meta.server.keeper.manager.DefaultKeeperStateController;
+import com.ctrip.xpipe.redis.meta.server.multidc.MultiDcNotifier;
+import com.ctrip.xpipe.redis.meta.server.redis.RedisStateManager;
+import com.ctrip.xpipe.redis.meta.server.redis.impl.DefaultRedisStateManager;
 import com.ctrip.xpipe.spring.AbstractProfile;
 import com.ctrip.xpipe.zk.ZkClient;
-import com.ctrip.xpipe.zk.impl.DefaultZkClient;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 /**
  * @author wenchao.meng
@@ -33,14 +37,28 @@ public class Production extends AbstractProfile{
 	
 	@Bean
 	public ZkClient getZkClient(MetaServerConfig metaServerConfig){
-		
-		DefaultZkClient zkClient = new DefaultZkClient();
-		zkClient.setZkAddress(metaServerConfig.getZkConnectionString());
-		return zkClient;
+
+		return getZkClient(metaServerConfig.getZkNameSpace(), metaServerConfig.getZkConnectionString());
 	}
 	
 	@Bean
 	public ConsoleNotifycationTask getConsoleNotifycationTask(){
 		return new ConsoleNotifycationTask();
+	}
+	
+	@Bean
+	public KeeperStateController getKeeperStateController(){
+		
+		return new DefaultKeeperStateController();
+	}
+	
+	@Bean
+	public MultiDcNotifier getMultiDcNotifier(){
+		return new MultiDcNotifier();
+	}
+	
+	@Bean
+	public RedisStateManager getRedisStateManager(){
+		return new DefaultRedisStateManager();
 	}
 }

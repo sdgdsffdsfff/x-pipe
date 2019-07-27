@@ -1,18 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration status="info" shutdownHook="disable" monitorInterval="5" >
+<configuration status="info" shutdownHook="disable" monitorInterval="5"   packages="com.ctrip.xpipe.utils.log">
+
+
+    <Scripts>
+        <Script name="filter.gv" language="js">
+            java.lang.System.getProperty('log.console.close') == 'true'
+        </Script>
+    </Scripts>
 
     <appenders>
         <console name="Console" target="SYSTEM_OUT">
-            <PatternLayout pattern="[%d{HH:mm:ss:SSS}][%p][%t][%C{1}]%m%n"/>
+            <PatternLayout pattern="%X{xpipe.cluster.shard}[%d{HH:mm:ss:SSS}][%p][%t][%c{1}]%m%xpEx{filters(org.junit,org.eclipse.jdt.internal,org.apache.maven.surefire,org.mockito,org.apache.catalina,org.springframework.web,com.dianping.cat)}%n"/>
+            <ScriptFilter onMatch="DENY" onMisMatch="ACCEPT">
+                <ScriptRef ref="filter.gv" />
+            </ScriptFilter>
         </console>
 
-        <RollingFile name="RollingFileInfo" fileName="target/applogs/xpipe/xpipe-test.logger"
-                     filePattern="target/applogs/xpipe/xpipe-test-%d{yyyy-MM-dd}-%i.logger">
-            <Filters>
-                <ThresholdFilter level="INFO"/>
-                <ThresholdFilter level="WARN" onMatch="DENY" onMismatch="NEUTRAL"/>
-            </Filters>
-            <PatternLayout pattern="[%d{HH:mm:ss:SSS}][%p][%t][%C{1}]%m%n"/>
+        <RollingFile name="RollingFileInfo" fileName="target/applogs/xpipe/xpipe-test-${sys:server.port:-start}.log"
+                     filePattern="target/applogs/xpipe/xpipe-test-%d{yyyy-MM-dd}-%i.log">
+            <PatternLayout pattern="%X{xpipe.cluster.shard}[%d{HH:mm:ss:SSS}][%p][%t][%c{1}]%m%xpEx{filters(org.junit,org.eclipse.jdt.internal,org.apache.maven.surefire,org.mockito,org.apache.catalina,org.springframework.web,com.dianping.cat)}%n"/>
             <Policies>
                 <TimeBasedTriggeringPolicy/>
                 <SizeBasedTriggeringPolicy size="100 MB"/>
@@ -24,19 +30,16 @@
     <loggers>
         <logger name="org.springframework" level="WARN"/>
         <logger name="io.netty" level="INFO"/>
-        <logger name="org.apache.zookeeper.server.ZooKeeperServer" level="WARN"/>
-        <logger name="org.apache.zookeeper.ZooKeeper" level="WARN"/>
-        
-        <!--  
-        <logger name="io.netty.handler.logging.LoggingHandler" level="DEBUG">
-        </logger>
-        <logger name="com.ctrip.xpipe.redis.protocal.cmd.InOutPayloadReplicationStore" level="DEBUG">
-        </logger>
-        <logger name="com.ctrip.xpipe.redis.keeper.netty.NettyMasterHandler" level="DEBUG">
-        </logger>
-        <logger name="com.ctrip.xpipe.redis.keeper.handler.LFHandler" level="DEBUG">
-        </logger>
-        -->
+        <logger name="org.apache" level="WARN"/>
+
+		<logger name="com.ctrip.xpipe.lifecycle.DefaultLifecycleState" level="WARN"/>
+		<logger name="com.ctrip.xpipe.redis.keeper.monitor.CommandDelay" level="WARN"/>
+		<logger name="com.ctrip.xpipe.lifecycle.DefaultRegistry" level="WARN"/>
+		
+		<!--  
+		<logger name="io.netty.handler.logging.LoggingHandler" level="DEBUG"/>
+		-->
+		
         <root level="INFO">
             <appender-ref ref="Console"/>
             <appender-ref ref="RollingFileInfo"/>

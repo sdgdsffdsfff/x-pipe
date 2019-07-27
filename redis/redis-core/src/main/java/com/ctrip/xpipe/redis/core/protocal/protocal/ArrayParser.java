@@ -1,11 +1,13 @@
 package com.ctrip.xpipe.redis.core.protocal.protocal;
 
+
 import com.ctrip.xpipe.payload.ByteArrayOutputStreamPayload;
 import com.ctrip.xpipe.redis.core.exception.RedisRuntimeException;
 import com.ctrip.xpipe.redis.core.protocal.RedisClientProtocol;
-
 import io.netty.buffer.ByteBuf;
-
+import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.buffer.UnpooledByteBufAllocator;
 /**
  * @author wenchao.meng
  *
@@ -13,7 +15,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class ArrayParser extends AbstractRedisClientProtocol<Object[]>{
 	
-	public static enum ARRAY_STATE{
+	public enum ARRAY_STATE{
 		READ_SIZE,
 		READ_CONTENT
 	}
@@ -23,8 +25,15 @@ public class ArrayParser extends AbstractRedisClientProtocol<Object[]>{
 	private int  currentIndex = 0;
 	private RedisClientProtocol<?> currentParser  = null;
 	private ARRAY_STATE arrayState = ARRAY_STATE.READ_SIZE;
-	
+
+	private int bulkStringInitSize;
+
 	public ArrayParser() {
+
+	}
+	
+	public ArrayParser(int bulkStringInitSize) {
+		this.bulkStringInitSize = bulkStringInitSize;
 	}
 	
 	public ArrayParser(Object []payload){
@@ -77,13 +86,13 @@ public class ArrayParser extends AbstractRedisClientProtocol<Object[]>{
 									byteBuf.readByte();
 									break;
 								case DOLLAR_BYTE:
-									currentParser = new BulkStringParser(new ByteArrayOutputStreamPayload());
+									currentParser = new BulkStringParser(new ByteArrayOutputStreamPayload(bulkStringInitSize));
 									break;
 								case COLON_BYTE:
-									currentParser = new IntegerParser();
+									currentParser = new LongParser();
 									break;
 								case ASTERISK_BYTE:
-									currentParser = new ArrayParser();
+									currentParser = new ArrayParser(bulkStringInitSize);
 									break;
 								case MINUS_BYTE:
 									currentParser = new RedisErrorParser();
@@ -119,7 +128,21 @@ public class ArrayParser extends AbstractRedisClientProtocol<Object[]>{
 
 	@Override
 	protected ByteBuf getWriteByteBuf() {
-		return null;
+		
+		int length = payload.length;
+		CompositeByteBuf result = new CompositeByteBuf(UnpooledByteBufAllocator.DEFAULT, false, payload.length + 1);
+		String prefix = String.format("%c%d\r\n", ASTERISK_BYTE, length);
+		result.addComponent(Unpooled.wrappedBuffer(prefix.getBytes()));
+		for(Object o : payload){
+			ByteBuf buff = ParserManager.parse(o);
+			result.addComponent(buff);
+		}
+		result.setIndex(0, result.capacity());
+		return result;
 	}
 
+	@Override
+	public boolean supportes(Class<?> clazz) {
+		return clazz.isArray();
+	}
 }

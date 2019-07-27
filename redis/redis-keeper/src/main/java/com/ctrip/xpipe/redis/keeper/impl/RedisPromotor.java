@@ -1,28 +1,29 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
+import com.ctrip.xpipe.api.pool.SimpleObjectPool;
+import com.ctrip.xpipe.endpoint.DefaultEndPoint;
+import com.ctrip.xpipe.netty.NettyPoolUtil;
+import com.ctrip.xpipe.netty.commands.NettyClient;
+import com.ctrip.xpipe.redis.core.protocal.cmd.AbstractSlaveOfCommand;
+import com.ctrip.xpipe.redis.core.protocal.cmd.Fsync;
+import com.ctrip.xpipe.redis.core.protocal.cmd.InfoCommand;
+import com.ctrip.xpipe.redis.core.protocal.cmd.SlaveOfCommand;
+import com.ctrip.xpipe.redis.core.protocal.error.RedisError;
+import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
+import com.ctrip.xpipe.redis.keeper.RedisKeeperServer.PROMOTION_STATE;
+import com.ctrip.xpipe.redis.keeper.RedisSlave;
+import com.ctrip.xpipe.redis.keeper.exception.RedisSlavePromotionException;
+import org.apache.commons.io.IOUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-
-import org.apache.commons.io.IOUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.ctrip.xpipe.api.pool.SimpleObjectPool;
-import com.ctrip.xpipe.endpoint.DefaultEndPoint;
-import com.ctrip.xpipe.netty.NettyPoolUtil;
-import com.ctrip.xpipe.netty.commands.NettyClient;
-import com.ctrip.xpipe.redis.core.protocal.cmd.Fsync;
-import com.ctrip.xpipe.redis.core.protocal.cmd.InfoCommand;
-import com.ctrip.xpipe.redis.core.protocal.cmd.SlaveOfCommand;
-import com.ctrip.xpipe.redis.core.protocal.error.RedisError;
-import com.ctrip.xpipe.redis.keeper.RedisKeeperServer;
-import com.ctrip.xpipe.redis.keeper.RedisSlave;
-import com.ctrip.xpipe.redis.keeper.exception.RedisSlavePromotionException;
-import com.ctrip.xpipe.redis.keeper.RedisKeeperServer.PROMOTION_STATE;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author marsqing
@@ -38,12 +39,14 @@ public class RedisPromotor {
 	private final RedisKeeperServer redisKeeperServer;
 	private final String promoteServerIp;
 	private final int promoteServerPort;
+	private ScheduledExecutorService scheduled;
 	
-	public RedisPromotor(RedisKeeperServer redisKeeperServer, String promoteServerIp, int promoteServerPort){
+	public RedisPromotor(RedisKeeperServer redisKeeperServer, String promoteServerIp, int promoteServerPort, ScheduledExecutorService scheduled){
 		
 		this.redisKeeperServer = redisKeeperServer;
 		this.promoteServerIp = promoteServerIp;
 		this.promoteServerPort = promoteServerPort;
+		this.scheduled = scheduled;
 	}
 	
 	public void promote() throws RedisSlavePromotionException{
@@ -72,13 +75,13 @@ public class RedisPromotor {
 		SimpleObjectPool<NettyClient> fsyncPool = null;
 		SimpleObjectPool<NettyClient> clientPool = null;
 		try{
-			fsyncPool = NettyPoolUtil.createNettyPool(new InetSocketAddress(promoteServerIp, promoteServerPort));
-			clientPool = NettyPoolUtil.createNettyPool(new InetSocketAddress(promoteServerIp, promoteServerPort));
+			fsyncPool = NettyPoolUtil.createNettyPool(new DefaultEndPoint(promoteServerIp, promoteServerPort));
+			clientPool = NettyPoolUtil.createNettyPool(new DefaultEndPoint(promoteServerIp, promoteServerPort));
 			waitUntilSlaveSync(redisSlave, this.promoteServerIp, this.promoteServerPort, waitTimeoutMilli);
 			
 			try{
 				redisKeeperServer.getRedisKeeperServerState().setPromotionState(PROMOTION_STATE.BEGIN_PROMOTE_SLAVE);
-				Fsync fsyncCmd = new Fsync(fsyncPool);
+				Fsync fsyncCmd = new Fsync(fsyncPool, scheduled);
 				String fsyncResult = fsyncCmd.execute().get();
 				logger.info("[promoteSlaveToMaster][fsync done]{}, {},{}", fsyncResult, promoteServerIp, promoteServerPort);
 				redisModified(redisSlave, clientPool);
@@ -102,52 +105,53 @@ public class RedisPromotor {
 	}
 
 	private void redisModified(RedisSlave redisSlave, SimpleObjectPool<NettyClient> clientPool) throws Exception {
-		
+
 		try{
-			SlaveOfCommand slaveOfCmd = new SlaveOfCommand(clientPool);
+			logger.info("[redisModified]{}", redisSlave);
+			AbstractSlaveOfCommand slaveOfCmd = new SlaveOfCommand(clientPool, scheduled);
 			slaveOfCmd.execute().sync();
 	
-			InfoCommand infoServerCmd = new InfoCommand(clientPool, "server");
+			InfoCommand infoServerCmd = new InfoCommand(clientPool, "server", scheduled);
 			String info = infoServerCmd.execute().get();
 			String masterId = null;
 	
-			try{
-				List<String> lines = IOUtils.readLines(new StringReader(info));
-				for (String line : lines) {
-					if (line.startsWith("run_id:")) {
-						masterId = line.substring("run_id:".length());
-					}
+			List<String> lines = IOUtils.readLines(new StringReader(info));
+			for (String line : lines) {
+				if (line.startsWith("run_id:")) {
+					masterId = line.substring("run_id:".length());
 				}
-				InfoCommand infoLastMasterCmd = new InfoCommand(clientPool,"lastmaster");
-				String infoLastMaster = infoLastMasterCmd.execute().get();
-				long keeperOffset = 0, newMasterOffset = 0;
-				try {
-					String[] parts = infoLastMaster.split("\\s");
-					keeperOffset = Long.parseLong(parts[1]);
-					newMasterOffset = Long.parseLong(parts[2]);
-					
-					redisKeeperServer.getRedisKeeperServerState().setPromotionState(
-							PROMOTION_STATE.SLAVE_PROMTED, new SlavePromotionInfo(keeperOffset, new DefaultEndPoint(promoteServerIp, promoteServerPort), 
-									masterId, newMasterOffset));
-				} catch (Exception e) {
-					logger.error("[onComplete]" + promoteServerIp + ":" + promoteServerPort, e);
-				}
-			} catch (IOException e1) {
-				logger.error("promoteSlaveToMaster", e1);
 			}
-		}finally{
+			InfoCommand infoLastMasterCmd = new InfoCommand(clientPool,"lastmaster", scheduled);
+			String infoLastMaster = infoLastMasterCmd.execute().get();
+			long keeperOffset = 0, newMasterOffset = 0;
+			try {
+				String[] parts = infoLastMaster.split("\\s");
+				keeperOffset = Long.parseLong(parts[1]);
+				newMasterOffset = Long.parseLong(parts[2]);
+
+				redisKeeperServer.getRedisKeeperServerState().setPromotionState(
+						PROMOTION_STATE.SLAVE_PROMTED, new SlavePromotionInfo(keeperOffset, new DefaultEndPoint(promoteServerIp, promoteServerPort),
+								masterId, newMasterOffset));
+			} catch (Exception e) {
+				logger.error("[onComplete]" + promoteServerIp + ":" + promoteServerPort, e);
+			}
+		} catch (IOException e1) {
+			logger.error("promoteSlaveToMaster", e1);
 		}
 	}
 
 	private void redisNotModified(RedisSlave redisSlave, SimpleObjectPool<NettyClient> clientPool) throws InterruptedException, ExecutionException, IOException {
-		
-		SlaveOfCommand slaveOfCmd = new SlaveOfCommand(clientPool);
+
+		logger.info("[redisNotModified]{}", redisSlave);
+		AbstractSlaveOfCommand slaveOfCmd = new SlaveOfCommand(clientPool, scheduled);
 		slaveOfCmd.execute().sync();
 		
 		redisKeeperServer.getRedisKeeperServerState().setPromotionState(PROMOTION_STATE.SLAVE_PROMTED, new InetSocketAddress(promoteServerIp, promoteServerPort));
 	}
 
 	private void waitUntilSlaveSync(RedisSlave redisSlave, String ip, int port, int timeoutMilli) {
+
+		logger.info("[waitUntilSlaveSync]{}, {}, {}, {}", redisSlave, ip, port,timeoutMilli);
 		
 		long til = System.currentTimeMillis() + timeoutMilli;
 		while (true) {
@@ -158,7 +162,7 @@ public class RedisPromotor {
 			}
 			
 			Long slaveCmdOffset = redisSlave.getAck();
-			long masterCmdOffset = redisSlave.getRedisKeeperServer().getKeeperRepl().getKeeperEndOffset();
+			long masterCmdOffset = redisSlave.getRedisKeeperServer().getKeeperRepl().getEndOffset();
 			
 			if(slaveCmdOffset == null || slaveCmdOffset < masterCmdOffset){
 				if (logger.isInfoEnabled()) {

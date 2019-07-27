@@ -1,21 +1,23 @@
 package com.ctrip.xpipe.monitor;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-
+import com.ctrip.xpipe.api.monitor.DelayMonitor;
+import com.ctrip.xpipe.lifecycle.AbstractStartStoppable;
+import com.ctrip.xpipe.utils.DateTimeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.ctrip.xpipe.api.monitor.DelayMonitor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author wenchao.meng
  *
  * May 21, 2016 10:14:33 PM
  */
-public class DefaultDelayMonitor implements DelayMonitor, Runnable{
+public class DefaultDelayMonitor extends AbstractStartStoppable implements DelayMonitor, Runnable{
 
 	protected Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -28,6 +30,10 @@ public class DefaultDelayMonitor implements DelayMonitor, Runnable{
 
 	private long infoDelta = 1000;
 
+	private boolean consolePrint = false;
+
+	private long max, maxTime;
+
 	public DefaultDelayMonitor(String delayType) {
 		this(delayType, 1000);
 	}
@@ -35,10 +41,35 @@ public class DefaultDelayMonitor implements DelayMonitor, Runnable{
 	public DefaultDelayMonitor(String delayType, long infoDelta) {
 		this.delayType = delayType;
 		this.infoDelta = infoDelta;
+	}
+
+	@Override
+	public void setConsolePrint(boolean consolePrint) {
+		this.consolePrint = consolePrint;
+	}
+
+	@Override
+	protected void doStart() throws Exception {
+		
 		scheduled = Executors.newScheduledThreadPool(4);
-		scheduled.scheduleAtFixedRate(this, 0, 5, TimeUnit.SECONDS);
+		ScheduledFuture<?> future = scheduled.scheduleAtFixedRate(this, 0, 5, TimeUnit.SECONDS);
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					future.get();
+				} catch (Exception e) {
+					logger.error("[doStart]", e);
+				}
+			}
+		}).start();
 	}
 	
+	
+	@Override
+	protected void doStop() throws Exception {
+		scheduled.shutdown();
+	}
 
 	@Override
 	public void addData(long lastTime) {
@@ -56,24 +87,45 @@ public class DefaultDelayMonitor implements DelayMonitor, Runnable{
 			totalDelay.addAndGet(delta);
 			totalNum.incrementAndGet();
 		}
+
+		if(delta > max){
+			max = delta;
+			maxTime = System.currentTimeMillis();
+		}
 	}
 		
 	@Override
 	public void run() {
 		
-		long currentDelay = totalDelay.get();
-		long currentNum = totalNum.get();
-		
-		long deltaNum = currentNum - previousNum;
-		
-		if(deltaNum  > 0 ){
-			double avgDelay =  (double)(currentDelay - previousDelay)/deltaNum;
-			logger.info(String.format("%d - %d = %d, %d - %d = %d", currentDelay,previousDelay, currentDelay - previousDelay, currentNum, previousNum, currentNum - previousNum));
-			logger.info("[delay]{}-{} {}", getDelayType(), delayInfo == null ? "" :delayInfo, String.format("%.2f", avgDelay));
+		try{
+			long currentDelay = totalDelay.get();
+			long currentNum = totalNum.get();
+			
+			long deltaNum = currentNum - previousNum;
+			
+			if(deltaNum  > 0 ){
+				double avgDelay =  (double)(currentDelay - previousDelay)/deltaNum;
+
+				logger.info(String.format("%d - %d = %d, %d - %d = %d", currentDelay,previousDelay, currentDelay - previousDelay, currentNum, previousNum, currentNum - previousNum));
+				String info = String.format("[delay]%s, %s, %s", getDelayType(), delayInfo == null ? "" :delayInfo, String.format("%.2f", avgDelay));
+				if(consolePrint){
+					System.out.println(info);
+				}
+				logger.info(info);
+			}
+
+			String maxInfo = String.format("[max]%d, %s", max, DateTimeUtils.timeAsString(maxTime));
+			logger.info(maxInfo);
+			if(consolePrint){
+				System.out.println(maxInfo);
+			}
+
+			previousDelay = currentDelay;
+			previousNum = currentNum;
+			max = 0;
+		}catch(Throwable th){
+			logger.error("[run]", th);
 		}
-		
-		previousDelay = currentDelay;
-		previousNum = currentNum;
 	}
 
 

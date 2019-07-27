@@ -13,12 +13,22 @@ public abstract class AbstractLoadRedis extends AbstractRedis{
 
 	protected long total = 1 << 30;
 	
+	protected long maxKeyIndex = Integer.parseInt(System.getProperty("maxKeyIndex", String.valueOf(1 << 20)));
+
+	protected int sleepMilli = Integer.parseInt(System.getProperty("sleepMilli", String.valueOf(0)));
+
+	protected boolean cycle = Boolean.parseBoolean(System.getProperty("cycle", "true"));
+	
 	protected final AtomicLong current = new AtomicLong();
 
 	public AbstractLoadRedis(InetSocketAddress master) {
 		super(master);
 	}
-	
+
+	public void setMaxKeyIndex(long maxKeyIndex) {
+		this.maxKeyIndex = maxKeyIndex;
+	}
+
 	@Override
 	protected void doStart() throws Exception {
 		super.doStart();
@@ -42,8 +52,11 @@ public abstract class AbstractLoadRedis extends AbstractRedis{
 				lastTimeMili = currentTime;
 			}
 		}, 5, 5, TimeUnit.SECONDS);
-		
-		
+	}
+	
+	
+	protected long getKeyIndex(long index) {
+		return index%maxKeyIndex;
 	}
 
 	public long increase(){
@@ -55,7 +68,4 @@ public abstract class AbstractLoadRedis extends AbstractRedis{
 		}
 		return next; 
 	}
-	
-
-
 }

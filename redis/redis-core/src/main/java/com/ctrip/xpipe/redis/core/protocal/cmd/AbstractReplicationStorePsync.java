@@ -1,19 +1,16 @@
 package com.ctrip.xpipe.redis.core.protocal.cmd;
 
-
-
-import java.io.IOException;
-
-import org.unidal.tuple.Pair;
-
 import com.ctrip.xpipe.api.pool.SimpleObjectPool;
 import com.ctrip.xpipe.netty.commands.NettyClient;
 import com.ctrip.xpipe.redis.core.protocal.protocal.BulkStringParser;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
 import com.ctrip.xpipe.redis.core.store.RdbStore;
 import com.ctrip.xpipe.redis.core.store.ReplicationStore;
-
+import com.ctrip.xpipe.tuple.Pair;
 import io.netty.buffer.ByteBuf;
 
+import java.io.IOException;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author marsqing
@@ -22,33 +19,31 @@ import io.netty.buffer.ByteBuf;
  */
 public abstract class AbstractReplicationStorePsync extends AbstractPsync {
 	
-	
 	protected volatile ReplicationStore  	    currentReplicationStore;
-	
-	
+
 	private volatile RdbStore rdbStore;
 	
 	private volatile InOutPayloadReplicationStore inOutPayloadReplicationStore;
 	
-	public AbstractReplicationStorePsync(SimpleObjectPool<NettyClient> clientPool, boolean saveCommands) {
-		super(clientPool, saveCommands);
+	public AbstractReplicationStorePsync(SimpleObjectPool<NettyClient> clientPool, boolean saveCommands, ScheduledExecutorService scheduled) {
+		super(clientPool, saveCommands, scheduled);
 	}
 	
 
 	@Override
-	protected  Pair<String, Long> getRequestMasterInfo() {
+	protected Pair<String, Long> getRequestMasterInfo() {
 		
-		String masterRunidRequest = null;
+		String replIdRequest = null;
 		long offset = -1;
 		
 		if(currentReplicationStore == null){
-			masterRunidRequest = "?";
+			replIdRequest = "?";
 			offset = -1;
 		}else{
-			masterRunidRequest = currentReplicationStore.getMetaStore().getMasterRunid();
+			replIdRequest = currentReplicationStore.getMetaStore().getReplId();
 			offset = currentReplicationStore.getEndOffset() + 1;
 		}
-		return new Pair<String, Long>(masterRunidRequest, offset);
+		return new Pair<String, Long>(replIdRequest, offset);
 	}
 
 
@@ -58,9 +53,19 @@ public abstract class AbstractReplicationStorePsync extends AbstractPsync {
 	protected void doOnFullSync() throws IOException {
 		
 		if(currentReplicationStore == null || !currentReplicationStore.isFresh()){
-			doWhenFullSyncToNonFreshReplicationStore(masterRunid);
+			doWhenFullSyncToNonFreshReplicationStore(replId);
 		}
 		super.doOnFullSync();
+	}
+	
+	
+	@Override
+	protected void doOnContinue(String newReplId) throws IOException {
+		
+		if(newReplId != null){
+			currentReplicationStore.shiftReplicationId(newReplId);
+		}
+		super.doOnContinue(newReplId);
 	}
 
 	@Override
@@ -72,33 +77,24 @@ public abstract class AbstractReplicationStorePsync extends AbstractPsync {
 	}
 
 	@Override
-	protected void beginReadRdb(long fileSize) {
+	protected void beginReadRdb(EofType eofType) {
 		try {
-			rdbStore = currentReplicationStore.beginRdb(masterRunid, masterRdbOffset, fileSize);
+			rdbStore = currentReplicationStore.beginRdb(replId, masterRdbOffset, eofType);
 			inOutPayloadReplicationStore.setRdbStore(rdbStore);
+			super.beginReadRdb(eofType);
 		} catch (IOException e) {
-			logger.error("[beginReadRdb]" + masterRunid + "," + masterRdbOffset, e);
+			logger.error("[beginReadRdb]" + replId + "," + masterRdbOffset, e);
 		}
-
-		super.beginReadRdb(fileSize);
 	}
-
+	
 	@Override
-	protected void endReadRdb() {
-		
-		logger.info("[endReadRdb]{}", this);
-		try {
-			rdbStore.endRdb();
-		} catch (IOException e) {
-			logger.error("[endReadRdb]", e);
-		}
-		super.endReadRdb();
+	protected void failReadRdb(Throwable throwable) {
+		rdbStore.failRdb(throwable);
 	}
 
 	protected void appendCommands(ByteBuf byteBuf) throws IOException {
 		
-		int n = currentReplicationStore.appendCommands(byteBuf);
-		logger.debug("[appendCommands]{}", n);
+		currentReplicationStore.appendCommands(byteBuf);
 	}
 
 	protected abstract void doWhenFullSyncToNonFreshReplicationStore(String masterRunid) throws IOException;

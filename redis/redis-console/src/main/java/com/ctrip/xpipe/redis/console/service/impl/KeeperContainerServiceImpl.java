@@ -1,24 +1,27 @@
 package com.ctrip.xpipe.redis.console.service.impl;
 
+import com.ctrip.xpipe.endpoint.HostPort;
 import com.ctrip.xpipe.redis.console.constant.XPipeConsoleConstant;
 import com.ctrip.xpipe.redis.console.controller.api.data.meta.KeeperContainerCreateInfo;
 import com.ctrip.xpipe.redis.console.model.*;
 import com.ctrip.xpipe.redis.console.query.DalQuery;
 import com.ctrip.xpipe.redis.console.service.*;
+import com.ctrip.xpipe.spring.RestTemplateFactory;
 import com.ctrip.xpipe.utils.StringUtil;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 import org.unidal.dal.jdbc.DalException;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
-public class KeepercontainerServiceImpl extends AbstractConsoleService<KeepercontainerTblDao>
-    implements KeepercontainerService {
+public class KeeperContainerServiceImpl extends AbstractConsoleService<KeepercontainerTblDao>
+    implements KeeperContainerService {
 
   @Autowired
   private ClusterService clusterService;
@@ -28,6 +31,11 @@ public class KeepercontainerServiceImpl extends AbstractConsoleService<Keepercon
 
   @Autowired
   private OrganizationService organizationService;
+
+  @Autowired
+  private RedisService redisService;
+
+  private RestTemplate restTemplate;
 
   @Override
   public KeepercontainerTbl find(final long id) {
@@ -121,6 +129,11 @@ public class KeepercontainerServiceImpl extends AbstractConsoleService<Keepercon
               + createInfo.getKeepercontainerIp() + " already exists");
     }
 
+    if (!checkIpAndPort(createInfo.getKeepercontainerIp(), createInfo.getKeepercontainerPort())) {
+      throw new IllegalArgumentException(String.format("Keeper container with ip:%s, port:%d is unhealthy",
+              createInfo.getKeepercontainerIp(), createInfo.getKeepercontainerPort()));
+    }
+
     DcTbl dcTbl = dcService.find(createInfo.getDcName());
     if(dcTbl == null) {
       throw new IllegalArgumentException("DC name does not exist");
@@ -197,6 +210,42 @@ public class KeepercontainerServiceImpl extends AbstractConsoleService<Keepercon
     });
   }
 
+  @Override
+  public List<KeeperContainerInfoModel> findAllInfos() {
+    List<KeepercontainerTbl> baseInfos = findContainerBaseInfos();
+
+    HashMap<Long, KeeperContainerInfoModel> containerInfoMap = new HashMap<>();
+    baseInfos.forEach(baseInfo -> {
+      KeeperContainerInfoModel model = new KeeperContainerInfoModel();
+      model.setId(baseInfo.getKeepercontainerId());
+      model.setAddr(new HostPort(baseInfo.getKeepercontainerIp(), baseInfo.getKeepercontainerPort()));
+      model.setDcName(baseInfo.getDcInfo().getDcName());
+      model.setOrgName(baseInfo.getOrgInfo().getOrgName());
+
+      containerInfoMap.put(model.getId(), model);
+    });
+
+    List<RedisTbl> containerLoad = redisService.findAllKeeperContainerCountInfo();
+    containerLoad.forEach(load -> {
+      if (!containerInfoMap.containsKey(load.getKeepercontainerId())) return;
+      KeeperContainerInfoModel model = containerInfoMap.get(load.getKeepercontainerId());
+      model.setKeeperCount(load.getCount());
+      model.setClusterCount(load.getDcClusterShardInfo().getClusterCount());
+      model.setShardCount(load.getDcClusterShardInfo().getShardCount());
+    });
+
+    return new ArrayList<>(containerInfoMap.values());
+  }
+
+  private List<KeepercontainerTbl> findContainerBaseInfos() {
+    return queryHandler.handleQuery(new DalQuery<List<KeepercontainerTbl>>() {
+      @Override
+      public List<KeepercontainerTbl> doQuery() throws DalException {
+        return dao.findContainerBaseInfo(KeepercontainerTblEntity.READSET_BASE_INFO);
+      }
+    });
+  }
+
   protected KeepercontainerTbl findByIpPort(String ip, int port) {
     return queryHandler.handleQuery(new DalQuery<KeepercontainerTbl>() {
       @Override
@@ -213,6 +262,32 @@ public class KeepercontainerServiceImpl extends AbstractConsoleService<Keepercon
         return true;
       }
     }
+    return false;
+  }
+
+  protected RestTemplate getOrCreateRestTemplate() {
+    if (restTemplate == null) {
+      synchronized (this) {
+        if (restTemplate == null) {
+          restTemplate = RestTemplateFactory.createRestTemplate();
+        }
+      }
+    }
+    return restTemplate;
+  }
+
+
+  protected boolean checkIpAndPort(String host, int port) {
+
+    getOrCreateRestTemplate();
+    String url = "http://%s:%d/health";
+    try {
+      return restTemplate.getForObject(String.format(url, host, port), Boolean.class);
+
+    } catch (RestClientException e) {
+      logger.error("[healthCheck]Http connect occur exception. {}", e);
+    }
+
     return false;
   }
 

@@ -21,7 +21,7 @@ public interface MetaCache {
 
     HostPort findMasterInSameShard(HostPort hostPort);
 
-    Set<HostPort> allKeepers();
+    Set<HostPort> getAllKeepers();
 
     Pair<String, String> findClusterShard(HostPort hostPort);
 
@@ -37,7 +37,13 @@ public interface MetaCache {
 
     RouteMeta getRouteIfPossible(HostPort hostPort);
 
-    List<HostPort> getAllRedisOfDc(String dcId);
+    boolean isCrossRegion(String activeDc, String backupDc);
+
+    List<HostPort> getAllRedisOfDc(String activeDc, String dcId);
 
     String getActiveDc(String clusterId, String shardId);
+
+    String getActiveDc(HostPort hostPort);
+
+    long getLastUpdateTime();
 }

@@ -24,6 +24,8 @@ public class DefaultRedisInstanceInfo implements RedisInstanceInfo {
 
     private String activeDc;
 
+    private boolean crossRegion;
+
     public DefaultRedisInstanceInfo(String dcId, String clusterId, String shardId, HostPort hostPort, String activeDc) {
         this.dcId = dcId;
         this.clusterId = clusterId;
@@ -82,7 +84,17 @@ public class DefaultRedisInstanceInfo implements RedisInstanceInfo {
     }
 
     @Override
+    public boolean isCrossRegion() {
+        return crossRegion;
+    }
+
+    @Override
     public String toString() {
-        return StringUtil.join(", ", dcId, clusterId, shardId, hostPort);
+        return StringUtil.join(", ", dcId, clusterId, shardId, hostPort, crossRegion ? "proxied" : "normal");
+    }
+
+    public DefaultRedisInstanceInfo setCrossRegion(boolean crossRegion) {
+        this.crossRegion = crossRegion;
+        return this;
     }
 }

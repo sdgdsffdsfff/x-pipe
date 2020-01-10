@@ -4,9 +4,12 @@ import com.ctrip.xpipe.redis.console.model.SetinelTbl;
 import com.ctrip.xpipe.redis.console.model.ShardTbl;
 import com.ctrip.xpipe.redis.console.notifier.shard.ShardDeleteEvent;
 import com.ctrip.xpipe.redis.console.notifier.shard.ShardDeleteEventListener;
+import com.ctrip.xpipe.redis.console.resources.MetaCache;
 import com.ctrip.xpipe.redis.console.service.SentinelService;
 import com.ctrip.xpipe.redis.console.service.ShardService;
 import com.ctrip.xpipe.redis.console.spring.ConsoleContextConfig;
+import com.ctrip.xpipe.redis.core.util.SentinelUtil;
+import com.ctrip.xpipe.utils.VisibleForTesting;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -39,6 +42,9 @@ public class ClusterDeleteEventFactory extends AbstractClusterEventFactory {
     @Autowired
     private List<ClusterDeleteEventListener> clusterEventListeners;
 
+    @Autowired
+    private MetaCache metaCache;
+
     @Override
     public ClusterEvent createClusterEvent(String clusterName) {
         
@@ -49,7 +55,12 @@ public class ClusterDeleteEventFactory extends AbstractClusterEventFactory {
                 logger.info("[createClusterEvent] Create Shard Delete Event: {}", shardTbl);
                 Map<Long, SetinelTbl> sentinelMap = sentinelService.findByShard(shardTbl.getId());
                 ShardDeleteEvent shardEvent = new ShardDeleteEvent(clusterName, shardTbl.getShardName(), executors);
-                shardEvent.setShardMonitorName(shardTbl.getSetinelMonitorName());
+                try {
+                    shardEvent.setShardMonitorName(metaCache.getSentinelMonitorName(clusterName, shardTbl.getShardName()));
+                } catch (Exception e) {
+                    logger.warn("[createClusterEvent]", e);
+                    shardEvent.setShardMonitorName(shardTbl.getSetinelMonitorName());
+                }
                 shardEvent.setShardSentinels(getShardSentinelAddress(sentinelMap));
                 shardDeleteEventListeners
                         .forEach(shardDeleteEventListener -> shardEvent.addObserver(shardDeleteEventListener));
@@ -71,5 +82,11 @@ public class ClusterDeleteEventFactory extends AbstractClusterEventFactory {
             sb.append(sentinelTbl.getSetinelAddress()).append(",");
         }
         return sb.deleteCharAt(sb.length()-1).toString();
+    }
+
+    @VisibleForTesting
+    protected ClusterDeleteEventFactory setMetaCache(MetaCache metaCache) {
+        this.metaCache = metaCache;
+        return this;
     }
 }

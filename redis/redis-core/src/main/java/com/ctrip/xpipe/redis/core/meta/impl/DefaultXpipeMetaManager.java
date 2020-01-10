@@ -533,6 +533,11 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	}
 
 	@Override
+	public String getDcZone(String dcId) {
+		return getDirectDcMeta(dcId).getZone();
+	}
+
+	@Override
 	public List<KeeperMeta> getAllSurviceKeepers(String dcId, String clusterId, String shardId) {
 
 		List<KeeperMeta> keepers = getDirectKeepers(dcId, clusterId, shardId);
@@ -584,6 +589,16 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	}
 
 	@Override
+	public String getSentinelMonitorName(String dc, String clusterId, String shardId) {
+		ShardMeta shardMeta = getDirectShardMeta(dc, clusterId, shardId);
+		if(null == shardMeta) {
+			throw new RedisRuntimeException(String.format("shardMeta not found:%s %s %s", dc, clusterId, shardId));
+		}
+
+		return shardMeta.getSentinelMonitorName();
+	}
+
+	@Override
 	public void primaryDcChanged(String dc, String clusterId, String shardId, String newPrimaryDc) {
 		
 		for(DcMeta dcMeta : xpipeMeta.getDcs().values()){
@@ -612,11 +627,12 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 	@Override
 	public RouteMeta randomRoute(String currentDc, String tag, Integer orgId, String dstDc) {
 
+		logger.debug("[randomRoute]currentDc: {}, tag: {}, orgId: {}, dstDc: {}", currentDc, tag, orgId, dstDc);
 		List<RouteMeta> routes = routes(currentDc, tag);
 		if(routes == null || routes.isEmpty()){
 			return null;
 		}
-
+		logger.debug("[randomRoute]routes: {}", routes);
 		//for Same dstdc
 		List<RouteMeta> dstDcRoutes = new LinkedList<>();
 		routes.forEach(routeMeta -> {
@@ -625,6 +641,7 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 			}
 		});
 		if(dstDcRoutes.isEmpty()){
+			logger.debug("[randomRoute]dst dc empty: {}", routes);
 			return null;
 		}
 
@@ -673,8 +690,8 @@ public class DefaultXpipeMetaManager extends AbstractMetaManager implements Xpip
 		if(resultsCandidates.isEmpty()){
 			return null;
 		}
-
 		int random = new Random().nextInt(resultsCandidates.size());
+		logger.debug("[randomRoute]random: {}, size: {}", random, resultsCandidates.size());
 		return resultsCandidates.get(random);
 
 	}

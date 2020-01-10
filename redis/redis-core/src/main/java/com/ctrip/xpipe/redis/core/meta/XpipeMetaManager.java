@@ -81,6 +81,8 @@ public interface XpipeMetaManager extends MetaUpdateOperation{
 	List<MetaServerMeta> getMetaServers(String dc);
 	
 	SentinelMeta getSentinel(String dc, String clusterId, String shardId);
+
+	String getSentinelMonitorName(String dc, String clusterId, String shardId);
 	
 	ZkServerMeta  getZkServerMeta(String dc);
 
@@ -91,6 +93,8 @@ public interface XpipeMetaManager extends MetaUpdateOperation{
 	KeeperContainerMeta getKeeperContainer(String dc, KeeperMeta keeperMeta);
 
 	DcMeta getDcMeta(String dc);
+
+	String getDcZone(String dc);
 
 	List<KeeperMeta> getAllSurviceKeepers(String currentDc, String clusterId, String shardId);
 

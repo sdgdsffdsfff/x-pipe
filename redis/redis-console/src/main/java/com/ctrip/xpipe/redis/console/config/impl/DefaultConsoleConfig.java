@@ -37,7 +37,6 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     public static final String KEY_ALL_CONSOLES = "console.all.addresses";
     public static final String KEY_QUORUM = "console.quorum";
     public static final String KEY_DOMAIN = "console.domain";
-    public static final String KEY_CNAME_TODC = "console.cname.todc";
 
     public static final String KEY_SENTINEL_QUORUM = "console.sentinel.quorum";
 
@@ -59,7 +58,7 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
 
     private static final String KEY_REBALANCE_SENTINEL_MAX_NUM_ONCE = "rebalance.sentinel.max.num.once";
 
-    private static final String KEY_NO_ALARM_MUNITE_FOR_NEW_CLUSTER = "no.alarm.minute.for.new.cluster";
+    private static final String KEY_NO_ALARM_MUNITE_FOR_CLUSTER_UPDATE = "no.alarm.minute.for.cluster.update";
 
     public static final String KEY_IGNORED_DC_FOR_HEALTH_CHECK = "ignored.dc.for.health.check";
 
@@ -82,6 +81,14 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     private static final String KEY_DATABASE_DOMAIN_NAME = "console.database.domain.name";
 
     private static final String KEY_DATABASE_IP_ADDRESSES = "console.database.ip.address";
+
+    private static final String KEY_PROXY_INFO_CHECK_INTERVAL = "console.proxy.info.collector.check.interval";
+
+    private static final String KEY_OUTTER_CLIENT_CHECK_INTERVAL = "console.outter.client.check.interval";
+
+    private static final String KEY_CONSOLE_DOMAINS = "console.domains";
+
+    private static final String KEY_SENTINEL_CHECK_INTERVAL = "console.health.sentinel.interval";
 
     private Map<String, List<ConsoleConfigListener>> listeners = Maps.newConcurrentMap();
 
@@ -106,7 +113,7 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     }
 
     @Override
-    public String getXpipeRuntimeEnvironmentEnvironment() {
+    public String getXpipeRuntimeEnvironment() {
         return getProperty(KEY_XPIPE_RUNTIME_ENVIRONMENT, "");
     }
 
@@ -232,15 +239,13 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     }
 
     @Override
-    public String getConsoleDomain() {
-        return getProperty(KEY_DOMAIN, "127.0.0.1");
+    public int getSentinelCheckIntervalMilli() {
+        return getIntProperty(KEY_SENTINEL_CHECK_INTERVAL, 300000);
     }
 
     @Override
-    public Map<String, String> getConsoleCnameToDc() {
-
-        String property = getProperty(KEY_CNAME_TODC, "{}");
-        return JsonCodec.INSTANCE.decode(property, Map.class);
+    public String getConsoleDomain() {
+        return getProperty(KEY_DOMAIN, "127.0.0.1");
     }
 
     @Override
@@ -266,8 +271,8 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     }
 
     @Override
-    public int getNoAlarmMinutesForNewCluster() {
-        return getIntProperty(KEY_NO_ALARM_MUNITE_FOR_NEW_CLUSTER, 15);
+    public int getNoAlarmMinutesForClusterUpdate() {
+        return getIntProperty(KEY_NO_ALARM_MUNITE_FOR_CLUSTER_UPDATE, 15);
     }
 
     @Override
@@ -337,6 +342,22 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     @Override
     public String getDatabaseDomainName() {
         return getProperty(KEY_DATABASE_DOMAIN_NAME, "localhost");
+    }
+
+    @Override
+    public int getProxyInfoCollectInterval() {
+        return getIntProperty(KEY_PROXY_INFO_CHECK_INTERVAL, 10 * 1000);
+    }
+
+    @Override
+    public int getOutterClientCheckInterval() {
+        return getIntProperty(KEY_OUTTER_CLIENT_CHECK_INTERVAL, 120 * 1000);
+    }
+
+    @Override
+    public Map<String, String> getConsoleDomains() {
+        String property = getProperty(KEY_CONSOLE_DOMAINS, "{}");
+        return JsonCodec.INSTANCE.decode(property, Map.class);
     }
 
     @Override

@@ -197,4 +197,33 @@ public class SentinelServiceImpl extends AbstractConsoleService<SetinelTblDao> i
 			}
 		});
 	}
+
+	@Override
+	public void delete(long id) {
+		SetinelTbl setinelTbl = dao.createLocal();
+		setinelTbl.setSetinelId(id);
+		queryHandler.handleUpdate(new DalQuery<Integer>() {
+			@Override
+			public Integer doQuery() throws DalException {
+				return dao.deleteSentinel(setinelTbl, SetinelTblEntity.UPDATESET_FULL);
+			}
+		});
+	}
+
+	@Override
+	public void reheal(long id) {
+		SetinelTbl setinelTbl = queryHandler.handleQuery(new DalQuery<SetinelTbl>() {
+			@Override
+			public SetinelTbl doQuery() throws DalException {
+				return dao.findByPK(id, SetinelTblEntity.READSET_FULL);
+			}
+		});
+		setinelTbl.setDeleted(false);
+		queryHandler.handleUpdate(new DalQuery<Integer>() {
+			@Override
+			public Integer doQuery() throws DalException {
+				return dao.updateByPK(setinelTbl, SetinelTblEntity.UPDATESET_FULL);
+			}
+		});
+	}
 }

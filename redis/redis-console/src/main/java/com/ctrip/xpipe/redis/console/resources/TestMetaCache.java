@@ -43,7 +43,7 @@ public class TestMetaCache implements MetaCache {
     }
 
     @Override
-    public Set<HostPort> allKeepers() {
+    public Set<HostPort> getAllKeepers() {
         return null;
     }
 
@@ -83,10 +83,25 @@ public class TestMetaCache implements MetaCache {
     }
 
     @Override
-    public List<HostPort> getAllRedisOfDc(String dcId) {
+    public boolean isCrossRegion(String activeDc, String backupDc) {
+        return false;
+    }
+
+    @Override
+    public List<HostPort> getAllRedisOfDc(String activeDc, String dcId) {
         return null;
     }
 
     public String getActiveDc(String clusterId, String shardId){return null;}
+
+    @Override
+    public String getActiveDc(HostPort hostPort) {
+        return null;
+    }
+
+    @Override
+    public long getLastUpdateTime() {
+        return 0;
+    }
 
 }

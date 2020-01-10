@@ -3,6 +3,7 @@ package com.ctrip.xpipe.redis.console.service.migration.impl;
 import com.ctrip.xpipe.endpoint.HostPort;
 import com.ctrip.xpipe.redis.console.alert.ALERT_TYPE;
 import com.ctrip.xpipe.redis.console.alert.AlertManager;
+import com.ctrip.xpipe.redis.console.controller.api.RetMessage;
 import com.ctrip.xpipe.redis.console.dao.MigrationClusterDao;
 import com.ctrip.xpipe.redis.console.dao.MigrationEventDao;
 import com.ctrip.xpipe.redis.console.exception.BadRequestException;
@@ -26,8 +27,7 @@ import org.unidal.lookup.ContainerLoader;
 
 import javax.annotation.PostConstruct;
 import java.rmi.ServerException;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -79,6 +79,57 @@ public class MigrationServiceImpl extends AbstractConsoleService<MigrationEventT
                 return dao.findByPK(id, MigrationEventTblEntity.READSET_FULL);
             }
         });
+    }
+
+    @Override
+    public long countAll() {
+        return queryHandler.handleQuery(new DalQuery<Long>() {
+            @Override
+            public Long doQuery() throws DalException {
+                return dao.countAll(MigrationEventTblEntity.READSET_COUNT).getCount();
+            }
+        });
+    }
+
+    @Override
+    public long countAllByCluster(long clusterId) {
+        return migrationClusterDao.countAllByCluster(clusterId);
+    }
+
+    @Override
+    public List<MigrationModel> find(long size, long offset) {
+        List<MigrationClusterTbl> migrationClusterList = migrationClusterDao.find(size, offset);
+        return aggregateClusterByMigration(migrationClusterList);
+    }
+    @Override
+    public List<MigrationModel> findByCluster(long clusterId, long size, long offset) {
+        List<MigrationClusterTbl> migrationClusterList =
+                migrationClusterDao.findByCluster(clusterId, size, offset);
+        return aggregateClusterByMigration(migrationClusterList);
+    }
+
+    private List<MigrationModel> aggregateClusterByMigration(List<MigrationClusterTbl> migrationClusterTblList) {
+        Map<Long, List<MigrationClusterTbl> > clusterMap = new LinkedHashMap<>();
+
+        for (MigrationClusterTbl migrationCluster: migrationClusterTblList) {
+            MigrationEventTbl event = migrationCluster.getMigrationEvent();
+
+            if (!clusterMap.containsKey(event.getId())) {
+                clusterMap.put(event.getId(), new LinkedList<>());
+            }
+
+            clusterMap.get(event.getId()).add(migrationCluster);
+        }
+
+        Iterator<Map.Entry<Long, List<MigrationClusterTbl> > > iterator = clusterMap.entrySet().iterator();
+        List<MigrationModel> modals = new LinkedList<>();
+
+        while (iterator.hasNext()) {
+            List<MigrationClusterTbl> clusters = iterator.next().getValue();
+            modals.add(MigrationModel.createFromMigrationClusters(clusters));
+        }
+
+        return modals;
     }
 
     @Override
@@ -317,6 +368,27 @@ public class MigrationServiceImpl extends AbstractConsoleService<MigrationEventT
         return new TryMigrateResult(clusterTbl, activeDc, toDc);
     }
 
+    @Override
+    public RetMessage getMigrationSystemHealth() {
+        MigrationSystemAvailableChecker.MigrationSystemAvailability availability = this.getMigrationSystemAvailability();
+        if(availability.isAvaiable()) {
+            if(!availability.isWarning()) {
+                logger.debug("[getMigrationSystemHealthStatus][good]");
+                return RetMessage.createSuccessMessage();
+            } else {
+                logger.debug("[getMigrationSystemHealthStatus][warned]");
+                return RetMessage.createWarningMessage(availability.getMessage());
+            }
+        }
+        if(configService.ignoreMigrationSystemAvailability()) {
+            logger.warn("[getMigrationSystemHealthStatus][warn]{}", availability.getMessage());
+            return RetMessage.createWarningMessage(availability.getMessage());
+        } else {
+            logger.error("[getMigrationSystemHealthStatus][warn]{}", availability.getMessage());
+            return RetMessage.createFailMessage(availability.getMessage());
+        }
+    }
+
     protected DcTbl findToDc(String fromIdc, String toIdc, List<DcTbl> clusterRelatedDc) throws ToIdcNotFoundException {
 
         DcTbl fromIdcInfo = null;
@@ -371,8 +443,50 @@ public class MigrationServiceImpl extends AbstractConsoleService<MigrationEventT
     }
 
     @VisibleForTesting
-    protected MigrationServiceImpl setChecker(MigrationSystemAvailableChecker checker) {
+    public MigrationServiceImpl setChecker(MigrationSystemAvailableChecker checker) {
         this.checker = checker;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setMigrationEventManager(MigrationEventManager migrationEventManager) {
+        this.migrationEventManager = migrationEventManager;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setClusterService(ClusterService clusterService) {
+        this.clusterService = clusterService;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setDcClusterService(DcClusterService dcClusterService) {
+        this.dcClusterService = dcClusterService;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setDcService(DcService dcService) {
+        this.dcService = dcService;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setMigrationClusterDao(MigrationClusterDao migrationClusterDao) {
+        this.migrationClusterDao = migrationClusterDao;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setConfigService(ConfigService configService) {
+        this.configService = configService;
+        return this;
+    }
+
+    @VisibleForTesting
+    public MigrationServiceImpl setMigrationShardTblDao(MigrationShardTblDao migrationShardTblDao) {
+        this.migrationShardTblDao = migrationShardTblDao;
         return this;
     }
 }

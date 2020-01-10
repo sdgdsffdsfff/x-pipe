@@ -131,7 +131,7 @@ public class ClusterDao extends AbstractXpipeConsoleDAO{
 	}
 
 	@DalTransaction
-	public int bindDc(final ClusterTbl cluster, final DcTbl dc) throws DalException {
+	public int bindDc(final ClusterTbl cluster, final DcTbl dc, SetinelTbl sentinel) throws DalException {
 		List<ShardTbl> shards = queryHandler.handleQuery(new DalQuery<List<ShardTbl>>() {
 			@Override
 			public List<ShardTbl> doQuery() throws DalException {
@@ -166,6 +166,9 @@ public class ClusterDao extends AbstractXpipeConsoleDAO{
 					DcClusterShardTbl dcClusterShard = dcClusterShardTblDao.createLocal();
 					dcClusterShard.setDcClusterId(dcCluster.getDcClusterId())
 						.setShardId(shard.getId());
+					if (sentinel != null) {
+						dcClusterShard.setSetinelId(sentinel.getSetinelId());
+					}
 					dcClusterShards.add(dcClusterShard);
 				}
 				queryHandler.handleBatchInsert(new DalQuery<int[]>() {
@@ -223,6 +226,15 @@ public class ClusterDao extends AbstractXpipeConsoleDAO{
 		return queryHandler.handleQuery(new DalQuery<List<ClusterTbl>>() {
 			@Override public List<ClusterTbl> doQuery() throws DalException {
 				return clusterTblDao.findClustersWithOrgInfoByActiveDcId(dcId, ClusterTblEntity.READSET_FULL_WITH_ORG);
+			}
+		});
+	}
+
+	public List<ClusterTbl> findAllByDcId(final long dcId) {
+		return queryHandler.handleQuery(new DalQuery<List<ClusterTbl>>() {
+			@Override
+			public List<ClusterTbl> doQuery() throws DalException {
+				return clusterTblDao.findAllByDcId(dcId, ClusterTblEntity.READSET_FULL);
 			}
 		});
 	}

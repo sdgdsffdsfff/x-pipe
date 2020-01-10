@@ -1,17 +1,18 @@
 package com.ctrip.xpipe.redis.console.healthcheck.impl;
 
-import com.ctrip.xpipe.api.cluster.CrossDcClusterServer;
 import com.ctrip.xpipe.api.endpoint.Endpoint;
 import com.ctrip.xpipe.endpoint.HostPort;
 import com.ctrip.xpipe.lifecycle.LifecycleHelper;
+import com.ctrip.xpipe.redis.console.cluster.ConsoleLeaderElector;
 import com.ctrip.xpipe.redis.console.config.ConsoleConfig;
 import com.ctrip.xpipe.redis.console.healthcheck.HealthCheckActionFactory;
 import com.ctrip.xpipe.redis.console.healthcheck.RedisHealthCheckInstance;
 import com.ctrip.xpipe.redis.console.healthcheck.RedisInstanceInfo;
 import com.ctrip.xpipe.redis.console.healthcheck.config.CompositeHealthCheckConfig;
 import com.ctrip.xpipe.redis.console.healthcheck.config.HealthCheckConfig;
-import com.ctrip.xpipe.redis.console.healthcheck.crossdc.CrossDcLeaderAwareHealthCheckActionFactory;
+import com.ctrip.xpipe.redis.console.healthcheck.leader.SiteLeaderAwareHealthCheckActionFactory;
 import com.ctrip.xpipe.redis.console.healthcheck.session.RedisSessionManager;
+import com.ctrip.xpipe.redis.console.resources.MetaCache;
 import com.ctrip.xpipe.redis.core.entity.RedisMeta;
 import com.ctrip.xpipe.utils.VisibleForTesting;
 import org.slf4j.Logger;
@@ -44,7 +45,10 @@ public class DefaultRedisHealthCheckInstanceFactory implements RedisHealthCheckI
     private List<HealthCheckActionFactory> factories;
 
     @Autowired(required = false)
-    private CrossDcClusterServer clusterServer;
+    private ConsoleLeaderElector clusterServer;
+
+    @Autowired
+    private MetaCache metaCache;
 
 
     @Override
@@ -54,7 +58,10 @@ public class DefaultRedisHealthCheckInstanceFactory implements RedisHealthCheckI
 
         RedisInstanceInfo info = createRedisInstanceInfo(redisMeta);
         Endpoint endpoint = endpointFactory.getOrCreateEndpoint(redisMeta);
-        HealthCheckConfig config = new CompositeHealthCheckConfig(endpoint, consoleConfig);
+        if (info.isCrossRegion()) {
+            logger.info("[create]{}", info);
+        }
+        HealthCheckConfig config = new CompositeHealthCheckConfig(info, consoleConfig);
 
         instance.setEndpoint(endpoint)
                 .setHealthCheckConfig(config)
@@ -73,21 +80,22 @@ public class DefaultRedisHealthCheckInstanceFactory implements RedisHealthCheckI
     }
 
     private RedisInstanceInfo createRedisInstanceInfo(RedisMeta redisMeta) {
-        RedisInstanceInfo info =  new DefaultRedisInstanceInfo(
+        DefaultRedisInstanceInfo info =  new DefaultRedisInstanceInfo(
                 redisMeta.parent().parent().parent().getId(),
                 redisMeta.parent().parent().getId(),
                 redisMeta.parent().getId(),
                 new HostPort(redisMeta.getIp(), redisMeta.getPort()),
                 redisMeta.parent().getActiveDc());
         info.isMaster(redisMeta.isMaster());
+        info.setCrossRegion(metaCache.isCrossRegion(info.getActiveDc(), info.getDcId()));
         return info;
     }
 
     @SuppressWarnings("unchecked")
     private void initActions(DefaultRedisHealthCheckInstance instance) {
         for(HealthCheckActionFactory factory : factories) {
-            if(factory instanceof CrossDcLeaderAwareHealthCheckActionFactory) {
-                installActionIfNeeded((CrossDcLeaderAwareHealthCheckActionFactory) factory, instance);
+            if(factory instanceof SiteLeaderAwareHealthCheckActionFactory) {
+                installActionIfNeeded((SiteLeaderAwareHealthCheckActionFactory) factory, instance);
             } else {
                 instance.register(factory.create(instance));
             }
@@ -95,7 +103,7 @@ public class DefaultRedisHealthCheckInstanceFactory implements RedisHealthCheckI
 
     }
 
-    private void installActionIfNeeded(CrossDcLeaderAwareHealthCheckActionFactory factory,
+    private void installActionIfNeeded(SiteLeaderAwareHealthCheckActionFactory factory,
                                        DefaultRedisHealthCheckInstance instance) {
         logger.debug("[try install action] {}", factory.support());
         if(clusterServer != null && clusterServer.amILeader()) {
@@ -105,7 +113,7 @@ public class DefaultRedisHealthCheckInstanceFactory implements RedisHealthCheckI
     }
 
     @VisibleForTesting
-    protected DefaultRedisHealthCheckInstanceFactory setClusterServer(CrossDcClusterServer clusterServer) {
+    protected DefaultRedisHealthCheckInstanceFactory setClusterServer(ConsoleLeaderElector clusterServer) {
         this.clusterServer = clusterServer;
         return this;
     }
